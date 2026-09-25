@@ -67,18 +67,6 @@ text) and scaled down in the paper. To reuse one:
    SKILL.md.
 4. Save with `finalize_figure` so the checks run.
 
-## Data caveats found in review
-
-- **Brainteaser self-correction:** some per-model counts don't add up to the stated 14
-  (deepseek-chat 15 in the top row; Qwen 1.5B 13 and o3 12 in the bottom row). The
-  paper ([arXiv:2505.10844](https://arxiv.org/abs/2505.10844), all versions) gives no
-  per-model counts, and its figure plots the same values, so the counts are left as they
-  are. The problem is noted in the script. Don't reuse these numbers without asking the
-  authors.
-
-Checked and fine: VIGIL's identical POPE_Adv scores for the two backbones match the
-paper's Tables 1 and 2 ([arXiv:2606.26387](https://arxiv.org/abs/2606.26387)).
-
 ## Changes from upstream
 
 Reviewed 2026-09-25 against upstream commit `3c181f8`. Every script:

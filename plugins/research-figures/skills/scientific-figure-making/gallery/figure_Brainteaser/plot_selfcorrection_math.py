@@ -30,12 +30,7 @@ from matplotlib import gridspec
 FIGURE_DIR = Path(__file__).resolve().parent / 'figures'
 
 
-# Counts out of 14 puzzles per model. Note (source data, left unchanged): the categories
-# do not always add up to 14 -- deepseek-chat sums to 15 in the "correcting LLM" table, and
-# Qwen 1.5B / o3 sum to 13 / 12 in the "correcting human" table. The paper (all four arXiv
-# versions of 2505.10844) gives no per-model counts in its text or tables; its figure
-# (appendix, "Informed Self-Correction Results") plots these same values, so the true
-# counts cannot be recovered from the paper.
+# Counts out of 14 puzzles per model (example data from the paper; some rows don't sum to 14).
 data_math_correcting_llm = {
     'methods': [r'DeepSeek R1 Distill Qwen 1.5B',
                 r'DeepSeek R1 Distill Qwen 14B',
