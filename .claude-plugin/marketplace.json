@@ -1,0 +1,18 @@
+{
+  "name": "xiangyumou",
+  "owner": {
+    "name": "Xiangyu",
+    "url": "https://github.com/xiangyumou"
+  },
+  "description": "Xiangyu's Claude Code plugins and skills for research work.",
+  "plugins": [
+    {
+      "name": "scientific-figure-making",
+      "source": "./plugins/scientific-figure-making",
+      "description": "Publication-ready matplotlib figures: venue-sized layouts, semantic palette, TrueType export and automatic layout checks.",
+      "version": "1.0.0",
+      "category": "research",
+      "keywords": ["matplotlib", "figures", "plotting", "papers", "visualization"]
+    }
+  ]
+}
