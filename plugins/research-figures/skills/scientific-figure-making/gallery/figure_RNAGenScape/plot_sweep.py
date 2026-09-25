@@ -15,14 +15,10 @@ Techniques worth borrowing
 * The two series also differ in lightness (light pink vs. navy), so they stay
   distinct in grayscale.
 
-Labels are typeset with LaTeX (``text.usetex``) to match plot_comparison.py,
-so a TeX installation (``latex`` + ``dvipng``) is required.
-
 Run:  python plot_sweep.py  ->  figures/results_sweep.{png,pdf}
 
 Source: ChenLiu-1996/figures4papers (CC BY-NC 4.0).
 """
-import shutil
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -42,11 +38,6 @@ results_decrease = {
 
 
 if __name__ == '__main__':
-    if shutil.which('latex') is None:
-        raise SystemExit('plot_sweep.py typesets its labels with LaTeX (text.usetex); '
-                         'install a TeX distribution with latex and dvipng.')
-    plt.rcParams['text.usetex'] = True
-    # With usetex, the first family LaTeX knows is used (Helvetica -> helvet package).
     plt.rcParams['font.family'] = 'sans-serif'
     plt.rcParams['font.sans-serif'] = ['Helvetica', 'Arial', 'Liberation Sans', 'DejaVu Sans']
     plt.rcParams['font.size'] = 15

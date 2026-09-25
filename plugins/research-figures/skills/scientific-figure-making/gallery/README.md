@@ -19,7 +19,8 @@ Requirements: matplotlib ≥ 3.7 and numpy. A few scripts need more:
 - scipy: `Cflows/diffusion_swiss_roll.py`, `VIGIL/plot_concept.py`
 - seaborn: `ophthal_review/plot_composition.py`
 - python-dateutil: `ophthal_review/plot_trend.py`
-- a LaTeX install (`text.usetex`): `RNAGenScape/plot_comparison.py` and `plot_sweep.py`; without one they exit with a message.
+
+No script needs a LaTeX install. Special notation uses mathtext.
 
 ## Index by chart type
 
@@ -68,12 +69,15 @@ text) and scaled down in the paper. To reuse one:
 
 ## Data caveats found in review
 
-These are left as in the source, and marked in comments. Check them before you reuse the
-numbers:
+- **Brainteaser self-correction:** some per-model counts don't add up to the stated 14
+  (deepseek-chat 15 in the top row; Qwen 1.5B 13 and o3 12 in the bottom row). The
+  paper ([arXiv:2505.10844](https://arxiv.org/abs/2505.10844), all versions) gives no
+  per-model counts, and its figure plots the same values, so the counts are left as they
+  are. The problem is noted in the script. Don't reuse these numbers without asking the
+  authors.
 
-- **ImmunoStruct:** the Mean PPVn error bars are SEM (std/√5), while the other metrics show SD.
-- **Brainteaser self-correction:** some per-model counts don't add up to the stated 14.
-- **VIGIL radar:** two backbones have identical POPE_Adv scores, which may be a copy-paste slip.
+Checked and fine: VIGIL's identical POPE_Adv scores for the two backbones match the
+paper's Tables 1 and 2 ([arXiv:2606.26387](https://arxiv.org/abs/2606.26387)).
 
 ## Changes from upstream
 
@@ -96,7 +100,16 @@ Fixes that change what the figure shows:
   - Cflows now uses consistent tick formats.
   - CellSpliceNet prints "0.00" instead of "−0.00".
 - **Row labels:** added to the Brainteaser grids and group labels to the ophthal_review heatmap.
+- **ImmunoStruct error bars:** upstream divided only the Mean PPVn SD by √5, so that panel
+  showed SEM while the others showed SD. All panels now show SD.
+- **ophthal_review trend:** the LLaVA 1.0 marker moved from 2023-07 to 2023-04, its arXiv
+  release (2304.08485).
+- **Brainteaser self-correction:** the row labels were rewritten to match the paper. The
+  flawed solution is o3's, shared by every model. The top row corrects it; the bottom row
+  is tricked into "correcting" the correct human solution.
 - **Removed:** a crashing dead branch in the RNAGenScape comparison script.
+- **No LaTeX:** RNAGenScape switched from `text.usetex` to mathtext (`\mathtt` for method
+  names), so no script needs a TeX install.
 - **Reproducibility:** randomness is now seeded (Cflows swiss roll).
 
 Licence: CC BY-NC 4.0 (see the plugin's `LICENSE` and the skill's `NOTICE.md`).

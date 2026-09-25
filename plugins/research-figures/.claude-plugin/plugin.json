@@ -1,7 +1,7 @@
 {
   "name": "research-figures",
   "description": "Research figure toolkit (科研画图): publication-ready matplotlib figures with venue-sized layouts, the figures4papers semantic palette, TrueType export, automatic layout checks, and a gallery of reviewed figure scripts from published papers.",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "author": {
     "name": "Xiangyu",
     "url": "https://github.com/xiangyumou"

@@ -41,7 +41,10 @@ data_comparison = {
         "#8BCF8B",
         "#0F4D92"
     ],
-    # 'Backbone\nBenchmark' -> scores for [DPO, DA-DPO, VIGIL].
+    # 'Backbone\nBenchmark' -> scores for [DPO, DA-DPO, VIGIL] (all SFT + method), from
+    # Xiao, Liu et al., "Staying VIGILant", arXiv:2606.26387, Tables 1 and 2.
+    # The identical POPE_Adv rows for Qwen2.5-VL-7B and LLaVA-OneVision-7B are not a
+    # copy-paste error: the paper reports 82.8 / 84.2 / 86.9 for both backbones.
     'results': {
         'Qwen2.5-VL-7B\nPOPE$_{Adv}$': np.array([82.8, 84.2, 86.9]),
         'LLaVA-OneVision-7B\nPOPE$_{Adv}$': np.array([82.8, 84.2, 86.9]),

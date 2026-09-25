@@ -28,8 +28,8 @@ Techniques worth borrowing
   bars, where bar length depends on an arbitrary baseline. The small values
   (0.024, 0.006) become slivers but are still labelled with ``bar_label``.
 
-Labels are typeset with LaTeX (``text.usetex``) for \texttt method names,
-so a TeX installation (``latex`` + ``dvipng``) is required.
+Method and dataset names are set in monospace with mathtext (``$\mathtt{...}$``),
+so no LaTeX installation is needed.
 
 Run:  python plot_comparison.py
       -> figures/results_comparison_speed.{png,pdf}
@@ -37,7 +37,6 @@ Run:  python plot_comparison.py
 
 Source: ChenLiu-1996/figures4papers (CC BY-NC 4.0).
 """
-import shutil
 from pathlib import Path
 
 import numpy as np
@@ -46,14 +45,14 @@ import matplotlib.pyplot as plt
 
 FIG_DIR = Path(__file__).resolve().parent / 'figures'
 
-summary_label = r'\textit{Improvement}'
+summary_label = r'$\mathit{Improvement}$'
 options = ['VAE', 'DDPM', 'LDM', 'FM',
            'DiffAb', 'IgLM', 'NOS-C', 'NOS-D',
            'OAE + gradient ascent',
            'OAE + MCMC',
            'OAE + hill climbing',
            'OAE + stochastic hill climbing',
-           r'$\texttt{RNAGenScape}$ \textbf{(ours)}',
+           r'$\mathtt{RNAGenScape}$ $\mathbf{(ours)}$',
            summary_label]
 # One colour per method (not for the summary row): grays = de novo generators,
 # teal/pink/magenta = guided generators, greens = OAE + optimiser, navy = ours.
@@ -92,9 +91,9 @@ results_ribosome_delta_neg = [-0.24, -0.11, -0.24, -0.10, -0.04, -0.51, 0.10, -0
 results_ribosome_pct_neg = [58.3, 54.1, 58.2, 53.6, 54.2, 65.5, 46.0, 53.6,
                             55.7, 54.2, 56.1, 55.2, 67.8]
 
-column_labels = [r'$\texttt{OpenVaccine}~(+)$', r'$\texttt{OpenVaccine}~(-)$',
-                 r'$\texttt{Zebrafish}~(+)$', r'$\texttt{Zebrafish}~(-)$',
-                 r'$\texttt{Ribosome}~(+)$', r'$\texttt{Ribosome}~(-)$']
+column_labels = [r'$\mathtt{OpenVaccine}$ (+)', r'$\mathtt{OpenVaccine}$ (-)',
+                 r'$\mathtt{Zebrafish}$ (+)', r'$\mathtt{Zebrafish}$ (-)',
+                 r'$\mathtt{Ribosome}$ (+)', r'$\mathtt{Ribosome}$ (-)']
 
 
 def text_color_for(rgba):
@@ -116,7 +115,7 @@ def annotate_column(ax, values, j, cmap, norm, fmt):
     for i, val in enumerate(values):
         if i == len(values) - 1:
             color = "forestgreen" if val >= 0 else "darkred"
-            label, fontsize = f"{val:+.1f} \\%", 16
+            label, fontsize = f"{val:+.1f} %", 16
         else:
             color = text_color_for(cmap(norm(val)))
             label, fontsize = fmt.format(val), 14
@@ -207,7 +206,7 @@ def plot_optimization():
         # Shade from 50 % (chance level) upwards; lower success rates stay white.
         norm = mpl.colors.Normalize(vmin=max(50, vmin[j]), vmax=vmax[j])
         add_table_column(ax, percentages[:, j], j, cmap_red, norm)
-        annotate_column(ax, percentages[:, j], j, cmap_red, norm, "{:.1f} \\%")
+        annotate_column(ax, percentages[:, j], j, cmap_red, norm, "{:.1f} %")
     ax.set_yticks([])  # rows are named by the left panel
     style_table_axis(ax, 'Success rate')
 
@@ -216,11 +215,12 @@ def plot_optimization():
 
 
 if __name__ == '__main__':
-    if shutil.which('latex') is None:
-        raise SystemExit('plot_comparison.py typesets its labels with LaTeX (text.usetex); '
-                         'install a TeX distribution with latex and dvipng.')
-    plt.rcParams['text.usetex'] = True
-    # With usetex, the first family LaTeX knows is used (Helvetica -> helvet package).
+    # mathtext (no LaTeX install needed): sans for \mathit/\mathbf, monospace for \mathtt.
+    plt.rcParams['mathtext.fontset'] = 'custom'
+    plt.rcParams['mathtext.rm'] = 'sans'
+    plt.rcParams['mathtext.it'] = 'sans:italic'
+    plt.rcParams['mathtext.bf'] = 'sans:bold'
+    plt.rcParams['mathtext.tt'] = 'monospace'
     plt.rcParams['font.family'] = 'sans-serif'
     plt.rcParams['font.sans-serif'] = ['Helvetica', 'Arial', 'Liberation Sans', 'DejaVu Sans']
     plt.rcParams['font.size'] = 16

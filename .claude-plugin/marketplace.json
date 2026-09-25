@@ -10,7 +10,7 @@
       "name": "research-figures",
       "source": "./plugins/research-figures",
       "description": "Research figures (科研画图): publication-ready matplotlib skill with venue sizing, semantic palette, layout checks and a gallery of paper figure scripts.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "category": "research",
       "keywords": [
         "matplotlib",

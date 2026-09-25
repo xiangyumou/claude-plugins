@@ -1,10 +1,14 @@
 """How LLMs respond when told their math brainteaser solution is wrong (self-correction).
 
 Figure from the Brainteaser project (Han et al., "Creativity or Brute Force? Using
-Brainteasers as a Window into the Problem-Solving Abilities of Large Language Models").
-Top row ("LLM solution"): outcome categories when the model is asked to correct a solution
-it produced itself; bottom row ("Human solution"): outcome categories when it is asked to
-correct a human-written solution. Arrows in the titles say whether lower or higher is
+Brainteasers as a Window into the Problem-Solving Abilities of Large Language Models",
+NeurIPS 2025, arXiv:2505.10844), "informed self-correction" experiment. The flawed LLM
+solution S_LLM is the same for every model: OpenAI o3's solution under the CoT prompt,
+on the 14 of the 50 hardest math puzzles where it is wrong.
+Top row (a, "correcting flawed LLM solution"): the model is asked to correct the flawed
+S_LLM using the correct human solution S_Human. Bottom row (b, "'correcting' human
+solution"): the two are swapped, so the model is tricked into "correcting" the correct
+S_Human using the flawed S_LLM. Arrows in the titles say whether lower or higher is
 better. One bar per model; y = fraction of the 14 puzzles.
 
 Techniques worth borrowing:
@@ -27,8 +31,11 @@ FIGURE_DIR = Path(__file__).resolve().parent / 'figures'
 
 
 # Counts out of 14 puzzles per model. Note (source data, left unchanged): the categories
-# do not always add up to 14 -- deepseek-chat sums to 15 in the LLM table, and
-# Qwen 1.5B / o3 sum to 13 / 12 in the human table.
+# do not always add up to 14 -- deepseek-chat sums to 15 in the "correcting LLM" table, and
+# Qwen 1.5B / o3 sum to 13 / 12 in the "correcting human" table. The paper (all four arXiv
+# versions of 2505.10844) gives no per-model counts in its text or tables; its figure
+# (appendix, "Informed Self-Correction Results") plots these same values, so the true
+# counts cannot be recovered from the paper.
 data_math_correcting_llm = {
     'methods': [r'DeepSeek R1 Distill Qwen 1.5B',
                 r'DeepSeek R1 Distill Qwen 14B',
@@ -101,13 +108,13 @@ if __name__ == '__main__':
     for col, category in enumerate(data_math_correcting_llm['subtypes']):
         ax = fig.add_subplot(gs[0, col])
         plot_panel(ax, data_math_correcting_llm, category,
-                   row_label='LLM solution' if col == 0 else None)
+                   row_label='Correcting flawed\nLLM solution' if col == 0 else None)
         if col == 0:
             handles, labels = ax.get_legend_handles_labels()   # reused for the legend panel
 
     for col, category in enumerate(data_math_correcting_human['subtypes']):
         plot_panel(fig.add_subplot(gs[1, col]), data_math_correcting_human, category,
-                   row_label='Human solution' if col == 0 else None)
+                   row_label='“Correcting” correct\nhuman solution' if col == 0 else None)
 
     ax = fig.add_subplot(gs[1, 3:])
     ax.legend(handles, labels, fontsize=30, loc='center', frameon=False)

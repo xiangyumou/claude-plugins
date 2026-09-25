@@ -26,16 +26,6 @@ Update later with `/plugin marketplace update xiangyumou`.
 |--------|--------------|---------|
 | [research-figures](plugins/research-figures) | 科研画图. Skill `scientific-figure-making`: publication-ready matplotlib figures (venue-sized layouts, semantic palette, TrueType PDF export, automatic layout checks via `pubfig.py`) plus a [gallery](plugins/research-figures/skills/scientific-figure-making/gallery/README.md) of 25 reviewed figure scripts from published papers | CC BY-NC 4.0, adapted from [figures4papers](https://github.com/ChenLiu-1996/figures4papers) |
 
-## Using a skill outside Claude Code
-
-Each skill is a plain folder under `plugins/<plugin>/skills/<skill>/` (`SKILL.md` +
-`references/` + `scripts/`). Other agents that read skill folders (e.g. Codex, via
-`~/.codex/skills/`) can use it through a symlink:
-
-```bash
-ln -s ~/Projects/claude-plugins/plugins/research-figures/skills/scientific-figure-making ~/.codex/skills/scientific-figure-making
-```
-
 ## Adding a skill
 
 Plugins are grouped by purpose: one plugin per category (e.g. `research-figures`), holding any

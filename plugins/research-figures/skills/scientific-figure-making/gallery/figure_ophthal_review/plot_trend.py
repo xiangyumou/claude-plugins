@@ -57,7 +57,7 @@ DATA = {
     ],
     'dates_vlm': [
         ('2023-02', 'BLIP-2'),
-        ('2023-07', 'LLaVA 1.0'),           # as in the published figure (arXiv version: 2023-04)
+        ('2023-04', 'LLaVA 1.0'),           # arXiv 2304.08485 (the published figure had 2023-07)
         ('2023-09', 'GPT-4V'),
         ('2023-10', 'LLaVA 1.5*'),
         ('2023-12', 'Gemini 1.0'),

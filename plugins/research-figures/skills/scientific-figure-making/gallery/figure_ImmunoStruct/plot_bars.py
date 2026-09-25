@@ -22,8 +22,7 @@ Axes: all bar axes start at zero. The original figures cut the axes at 0.5, 0.75
 0.68, which exaggerated gaps that are smaller than the error bars (e.g. Mean PPVn
 in the Cancer ablation). Starting at zero, the differences the paper describes are
 still easy to see.
-Error bars: the stored values are SD for AUROC and AUPRC. The Mean PPVn column is
-divided by sqrt(5) in raw_data.py, so it is SEM over 5 runs; see raw_data.py.
+Error bars: SD over 5 runs for all three metrics (see raw_data.py).
 
 The canvases are drawn at poster scale (24-28 in wide, 24/32 pt text) and scaled down
 in the paper, as in the figures4papers originals.
