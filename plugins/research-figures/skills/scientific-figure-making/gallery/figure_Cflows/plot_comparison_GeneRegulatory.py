@@ -1,7 +1,25 @@
-import os
+"""Gene-regulatory-network inference: graph edit distance of 9 methods on 3 graph sizes.
+
+From the Cflows paper figures (ChenLiu-1996/figures4papers). One panel per synthetic
+network size (|V| nodes, |E| edges, given as the x-label in mathtext), one bar per
+method, error bars = std as reported in the source (number of runs not given there).
+Lower graph edit distance is better. A fourth, axis-less subplot holds a two-column
+legend.
+
+Techniques worth borrowing:
+  - muted pastel fills for the eight baselines and one saturated blue for "ours",
+    so the proposed method pops without a call-out;
+  - mathtext set notation in axis labels (r'$|\\mathcal{V}|$');
+  - legend-only panel with `ncols=2` for a long method list.
+
+Run:  python plot_comparison_GeneRegulatory.py  ->  figures/fig2_comparison_GeneRegulatory.{png,pdf}
+"""
+from pathlib import Path
+
 import numpy as np
 from matplotlib import pyplot as plt
 
+FIG_DIR = Path(__file__).resolve().parent / 'figures'
 
 data_comparison_GeneRegulatory = {
     'methods': [r'OCE', r'PC', r'mTE', r'mMI', r'NRI', r'DCRNN', r'GTS', r'NIR', r'GC (ours)'],
@@ -32,11 +50,15 @@ data_comparison_GeneRegulatory = {
 
 
 if __name__ == '__main__':
-    plt.rcParams['font.family'] = 'helvetica'
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['Helvetica', 'Arial', 'Liberation Sans', 'DejaVu Sans']
     plt.rcParams['font.size'] = 24
     plt.rcParams['axes.spines.right'] = False
     plt.rcParams['axes.spines.top'] = False
     plt.rcParams['axes.linewidth'] = 3
+    plt.rcParams['pdf.fonttype'] = 42
+    plt.rcParams['ps.fonttype'] = 42
+    plt.rcParams['svg.fonttype'] = 'none'
 
     fig = plt.figure(figsize=(36, 6))
 
@@ -57,10 +79,12 @@ if __name__ == '__main__':
         if dataset_idx == 0:
             handles, labels = ax.get_legend_handles_labels()
 
-        ax.set_xticks([])
+        ax.set_xticks([])  # methods are named in the legend
         ax.set_ylabel(data_comparison_GeneRegulatory['metric'], fontsize=36, labelpad=12)
         ax.set_xlabel(dataset_name, fontsize=36, labelpad=12)
-        ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0))
+        # Edit distances are counts (50-500): plain integer ticks read better than
+        # the original scientific notation with a "1e2" offset.
+        ax.yaxis.set_major_formatter('{x:.0f}')
 
     ax = fig.add_subplot(1, 4, 4)
     ax.legend(handles, labels, fontsize=30, loc='lower left', ncols=2, frameon=False)
@@ -68,7 +92,7 @@ if __name__ == '__main__':
 
     fig.tight_layout(pad=2)
 
-    os.makedirs('./figures/', exist_ok=True)
-    fig.savefig('./figures/fig2_comparison_GeneRegulatory.png', dpi=300)
-    fig.savefig('./figures/fig2_comparison_GeneRegulatory.pdf', dpi=300)
+    FIG_DIR.mkdir(exist_ok=True)
+    fig.savefig(FIG_DIR / 'fig2_comparison_GeneRegulatory.png', dpi=300)
+    fig.savefig(FIG_DIR / 'fig2_comparison_GeneRegulatory.pdf', dpi=300)
     plt.close(fig)

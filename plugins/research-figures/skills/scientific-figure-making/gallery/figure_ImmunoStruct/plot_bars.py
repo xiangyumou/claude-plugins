@@ -1,10 +1,58 @@
-import os
+"""Per-metric bar panels and ablation bars for ImmunoStruct.
+
+ImmunoStruct predicts peptide-MHC immunogenicity from structure, sequence and
+biochemistry. These are the results figures of the paper: IEDB benchmark and the
+CEDAR cancer-neoantigen set ("Cancer" below). Four figures are written:
+
+- bars_comparison_{IEDB,Cancer}: one panel per metric (AUROC, AUPRC, Mean PPVn),
+  one bar per method. The x ticks are hidden and a 4th, axis-less subplot holds
+  the only legend, so the method names are listed once.
+- bars_ablation_IEDB: horizontal bars, one row per combination of components.
+  The labels are decoded from binary masks ("11001" -> "Structure + Sequence +
+  Transfer Learning") and the rows get darker shades of the ImmunoStruct blue
+  further up the list.
+- bars_ablation_Cancer: three variants from the transfer/contrastive-learning sweep
+  in three shades of the same blue.
+
+Techniques worth borrowing: a legend-only panel, labels decoded from binary masks,
+ablation shades made with `tint` (blending with white) rather than alpha, so the
+colours stay opaque with crisp edges in PDF/EPS.
+
+Axes: all bar axes start at zero. The original figures cut the axes at 0.5, 0.75 or
+0.68, which exaggerated gaps that are smaller than the error bars (e.g. Mean PPVn
+in the Cancer ablation). Starting at zero, the differences the paper describes are
+still easy to see.
+Error bars: the stored values are SD for AUROC and AUPRC. The Mean PPVn column is
+divided by sqrt(5) in raw_data.py, so it is SEM over 5 runs; see raw_data.py.
+
+The canvases are drawn at poster scale (24-28 in wide, 24/32 pt text) and scaled down
+in the paper, as in the figures4papers originals.
+
+Run:  python plot_bars.py  ->  figures/bars_{comparison,ablation}_{IEDB,Cancer}.{png,pdf}
+"""
+from pathlib import Path
+
 import numpy as np
+from matplotlib import colors as mcolors
 from matplotlib import pyplot as plt
+
 from raw_data import data_comparison_IEDB, data_ablation_IEDB, data_comparison_Cancer, data_ablation_Cancer
+
+FIGURE_DIR = Path(__file__).resolve().parent / 'figures'
+BLUE = '#3775BA'  # ImmunoStruct (ours); also the base colour of the ablation shades
+
+
+def tint(color, amount):
+    """Blend `color` with white: amount=1 gives the colour, 0 gives white.
+
+    On a white background this looks the same as alpha=amount, but the colour stays opaque.
+    """
+    rgb = np.array(mcolors.to_rgb(color))
+    return tuple(1 - amount * (1 - rgb))
 
 
 def decode_ablation(data_dict):
+    """'11001' + ['Structure', 'Sequence', ...] -> 'Structure + Sequence + Transfer Learning'."""
     binary_list = data_dict['ablations']
     component_str = data_dict['components']
     decoded_list = []
@@ -18,199 +66,115 @@ def decode_ablation(data_dict):
     return decoded_list
 
 
-if __name__ == '__main__':
-    plt.rcParams['font.family'] = 'helvetica'
-    plt.rcParams['font.size'] = 24
-    plt.rcParams['axes.spines.right'] = False
-    plt.rcParams['axes.spines.top'] = False
-    plt.rcParams['axes.linewidth'] = 3
-    plt.rcParams['svg.fonttype'] = 'none'
+def save(fig, stem):
+    FIGURE_DIR.mkdir(exist_ok=True)
+    for ext in ('png', 'pdf'):
+        fig.savefig(FIGURE_DIR / f'{stem}.{ext}', dpi=600)
+    plt.close(fig)
 
+
+def plot_comparison(data, stem):
+    """One panel per metric and one bar per method, plus a legend-only 4th panel."""
     fig = plt.figure(figsize=(28, 6))
+    x = np.arange(len(data['methods']))
 
-    ax = fig.add_subplot(1, 4, 1)
-    ax.bar(range(len(data_comparison_IEDB['mean'])),
-           data_comparison_IEDB['mean'][:, 0],
-           yerr=data_comparison_IEDB['std'][:, 0],
-           capsize=5,
-           color=data_comparison_IEDB['colors'],
-           label=data_comparison_IEDB['methods'])
-    handles, labels = ax.get_legend_handles_labels()
-    ax.set_xticks([])
-    ax.set_ylim([0.5, 0.9])
-    ax.set_ylabel(data_comparison_IEDB['metrics'][0], fontsize=32)
-
-    ax = fig.add_subplot(1, 4, 2)
-    ax.bar(range(len(data_comparison_IEDB['mean'])),
-           data_comparison_IEDB['mean'][:, 1],
-           yerr=data_comparison_IEDB['std'][:, 1],
-           capsize=5,
-           color=data_comparison_IEDB['colors'])
-    ax.set_xticks([])
-    ax.set_ylim([0.15, 0.75])
-    ax.set_ylabel(data_comparison_IEDB['metrics'][1], fontsize=32)
-
-    ax = fig.add_subplot(1, 4, 3)
-    ax.bar(range(len(data_comparison_IEDB['mean'])),
-           data_comparison_IEDB['mean'][:, 2],
-           yerr=data_comparison_IEDB['std'][:, 2],
-           capsize=5,
-           color=data_comparison_IEDB['colors'])
-    ax.set_xticks([])
-    ax.set_ylim([0.18, 0.55])
-    ax.set_ylabel(data_comparison_IEDB['metrics'][2], fontsize=32)
+    for i, metric in enumerate(data['metrics']):
+        ax = fig.add_subplot(1, 4, i + 1)
+        # A list of labels gives every bar its own legend entry.
+        ax.bar(x,
+               data['mean'][:, i],
+               yerr=data['std'][:, i],
+               capsize=5,
+               color=data['colors'],
+               label=data['methods'])
+        ax.set_xticks([])
+        ax.set_ylabel(metric, fontsize=32)
+        if i == 0:
+            handles, labels = ax.get_legend_handles_labels()
 
     ax = fig.add_subplot(1, 4, 4)
     ax.legend(handles, labels)
     ax.set_axis_off()
 
     fig.tight_layout(pad=2)
-
-    os.makedirs('./figures/', exist_ok=True)
-    fig.savefig('./figures/bars_comparison_IEDB.png', dpi=600)
-    plt.close(fig)
+    save(fig, stem)
 
 
+def plot_ablation_IEDB(data, stem):
+    """Horizontal bars, one row per component combination; labels on the first panel only."""
     fig = plt.figure(figsize=(24, 8))
+    y = np.arange(len(data['ablations']))
+    # Shade by row: rows further down the list (plotted higher, ending with the full model) are darker.
+    colors = [tint(BLUE, a) for a in np.linspace(0.2, 1.0, len(y))]
 
-    ax = fig.add_subplot(1, 3, 1)
-    ax.barh(range(len(data_ablation_IEDB['mean'][:, 0])),
-            data_ablation_IEDB['mean'][:, 0],
-            xerr=data_ablation_IEDB['std'][:, 0],
-            color=[(0.215686, 0.458824, 0.729412, alpha) for alpha in np.linspace(0.2, 1.0, 12)],
-            ecolor='k',
-            capsize=5,
-    )
-
-    ax.set_yticks(range(len(data_ablation_IEDB['ablations'])))
-    ax.set_yticklabels(decode_ablation(data_ablation_IEDB))
-    ax.set_xlim([0.75, 0.9])
-    ax.set_xticks([0.75, 0.8, 0.85, 0.9])
-    ax.set_xticklabels([0.75, 0.8, 0.85, 0.9])
-    ax.set_xlabel(data_ablation_IEDB['metrics'][0], fontsize=32)
-
-    ax = fig.add_subplot(1, 3, 2)
-    ax.barh(range(len(data_ablation_IEDB['mean'][:, 1])),
-            data_ablation_IEDB['mean'][:, 1],
-            xerr=data_ablation_IEDB['std'][:, 1],
-            color=[(0.215686, 0.458824, 0.729412, alpha) for alpha in np.linspace(0.2, 1.0, 12)],
-            ecolor='k',
-            capsize=5,
-    )
-
-    ax.set_yticks([])
-    ax.set_xlim([0.4, 0.72])
-    ax.set_xticks([0.4, 0.5, 0.6, 0.7])
-    ax.set_xticklabels([0.4, 0.5, 0.6, 0.7])
-    ax.set_xlabel(data_ablation_IEDB['metrics'][1], fontsize=32)
-
-    ax = fig.add_subplot(1, 3, 3)
-    ax.barh(range(len(data_ablation_IEDB['mean'][:, 2])),
-            data_ablation_IEDB['mean'][:, 2],
-            xerr=data_ablation_IEDB['std'][:, 2],
-            color=[(0.215686, 0.458824, 0.729412, alpha) for alpha in np.linspace(0.2, 1.0, 12)],
-            ecolor='k',
-            capsize=5,
-    )
-
-    ax.set_yticks([])
-    ax.set_xlim([0.4, 0.55])
-    ax.set_xticks([0.4, 0.45, 0.5, 0.55])
-    ax.set_xticklabels([0.4, 0.45, 0.5, 0.55])
-    ax.set_xlabel(data_ablation_IEDB['metrics'][2], fontsize=32)
+    for i, metric in enumerate(data['metrics']):
+        ax = fig.add_subplot(1, 3, i + 1)
+        ax.barh(y,
+                data['mean'][:, i],
+                xerr=data['std'][:, i],
+                color=colors,
+                ecolor='k',
+                capsize=5)
+        if i == 0:
+            ax.set_yticks(y, decode_ablation(data))
+        else:
+            ax.set_yticks([])
+        ax.xaxis.set_major_locator(plt.MaxNLocator(nbins=5, steps=[1, 2, 5, 10]))  # 0.1/0.2 steps
+        ax.set_xlabel(metric, fontsize=32)
 
     fig.tight_layout(pad=2)
-    os.makedirs('./figures/', exist_ok=True)
-    fig.savefig('./figures/bars_ablation_IEDB.png', dpi=600)
-    plt.close(fig)
+    save(fig, stem)
 
 
+def plot_ablation_Cancer(data, stem):
+    """Three variants from the sweep over (transfer learning, contrastive-loss weight)."""
     fig = plt.figure(figsize=(28, 6))
 
-    ax = fig.add_subplot(1, 4, 1)
-    ax.bar(range(len(data_comparison_Cancer['mean'])),
-           data_comparison_Cancer['mean'][:, 0],
-           yerr=data_comparison_Cancer['std'][:, 0],
-           capsize=5,
-           color=data_comparison_Cancer['colors'],
-           label=data_comparison_Cancer['methods'])
-    handles, labels = ax.get_legend_handles_labels()
-    ax.set_xticks([])
-    ax.set_ylim([0.5, 0.82])
-    ax.set_ylabel(data_comparison_Cancer['metrics'][0], fontsize=32)
+    # Each entry of data['coeffs'] is [use transfer learning, contrastive-loss weight].
+    variants = {
+        'ImmunoStruct': [True, 0.01],
+        'No Contrastive Learning': [True, 0],
+        'No Contrastive Learning &\nNo Transfer Learning': [False, 0],
+    }
+    items_shown = [data['coeffs'].index(c) for c in variants.values()]  # -> [6, 4, 0]
+    colors = [tint(BLUE, a) for a in [1.0, 0.7, 0.4]]
+    x = np.arange(len(items_shown))
 
-    ax = fig.add_subplot(1, 4, 2)
-    ax.bar(range(len(data_comparison_Cancer['mean'])),
-           data_comparison_Cancer['mean'][:, 1],
-           yerr=data_comparison_Cancer['std'][:, 1],
-           capsize=5,
-           color=data_comparison_Cancer['colors'])
-    ax.set_xticks([])
-    ax.set_ylim([0.16, 0.52])
-    ax.set_ylabel(data_comparison_Cancer['metrics'][1], fontsize=32)
-
-    ax = fig.add_subplot(1, 4, 3)
-    ax.bar(range(len(data_comparison_Cancer['mean'])),
-           data_comparison_Cancer['mean'][:, 2],
-           yerr=data_comparison_Cancer['std'][:, 2],
-           capsize=5,
-           color=data_comparison_Cancer['colors'])
-    ax.set_xticks([])
-    ax.set_ylim([0.14, 0.44])
-    ax.set_ylabel(data_comparison_Cancer['metrics'][2], fontsize=32)
+    for i, metric in enumerate(data['metrics']):
+        ax = fig.add_subplot(1, 4, i + 1)
+        ax.bar(x,
+               data['mean'][items_shown, i],
+               yerr=data['std'][items_shown, i],
+               capsize=5,
+               color=colors,
+               label=list(variants))
+        ax.set_xticks([])
+        ax.set_ylabel(metric, fontsize=32)
+        if i == 0:
+            handles, labels = ax.get_legend_handles_labels()
 
     ax = fig.add_subplot(1, 4, 4)
     ax.legend(handles, labels)
     ax.set_axis_off()
 
     fig.tight_layout(pad=2)
+    save(fig, stem)
 
-    os.makedirs('./figures/', exist_ok=True)
-    fig.savefig('./figures/bars_comparison_Cancer.png', dpi=600)
-    plt.close(fig)
 
-    fig = plt.figure(figsize=(28, 6))
+if __name__ == '__main__':
+    plt.rcParams.update({
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Helvetica', 'Arial', 'Liberation Sans', 'DejaVu Sans'],
+        'font.size': 24,
+        'axes.spines.right': False,
+        'axes.spines.top': False,
+        'axes.linewidth': 3,
+        'pdf.fonttype': 42,  # embed TrueType, not Type 3
+        'ps.fonttype': 42,
+        'svg.fonttype': 'none',
+    })
 
-    items_shown = [6, 4, 0] # transfer + contrastive, transfer, none
-
-    ax = fig.add_subplot(1, 4, 1)
-    ax.bar(range(len(items_shown)),
-           data_ablation_Cancer['mean'][:, 0][items_shown],
-           yerr=data_ablation_Cancer['std'][:, 0][items_shown],
-           capsize=5,
-           color=[(0.215686, 0.458824, 0.729412, alpha) for alpha in [1.0, 0.7, 0.4]],
-           label=['ImmunoStruct', 'No Contrastive Learning',
-                  'No Contrastive Learning &\nNo Transfer Learning'])
-    handles, labels = ax.get_legend_handles_labels()
-    ax.set_xticks([])
-    ax.set_ylim([0.68, 0.80])
-    ax.set_ylabel(data_ablation_Cancer['metrics'][0], fontsize=32)
-
-    ax = fig.add_subplot(1, 4, 2)
-    ax.bar(range(len(items_shown)),
-           data_ablation_Cancer['mean'][:, 1][items_shown],
-           yerr=data_ablation_Cancer['std'][:, 1][items_shown],
-           capsize=5,
-           color=[(0.215686, 0.458824, 0.729412, alpha) for alpha in [1.0, 0.7, 0.4]])
-    ax.set_xticks([])
-    ax.set_ylim([0.30, 0.52])
-    ax.set_ylabel(data_ablation_Cancer['metrics'][1], fontsize=32)
-
-    ax = fig.add_subplot(1, 4, 3)
-    ax.bar(range(len(items_shown)),
-           data_ablation_Cancer['mean'][:, 2][items_shown],
-           yerr=data_ablation_Cancer['std'][:, 2][items_shown],
-           capsize=5,
-           color=[(0.215686, 0.458824, 0.729412, alpha) for alpha in [1.0, 0.7, 0.4]])
-    ax.set_xticks([])
-    ax.set_ylim([0.29, 0.43])
-    ax.set_ylabel(data_ablation_Cancer['metrics'][2], fontsize=32)
-
-    ax = fig.add_subplot(1, 4, 4)
-    ax.legend(handles, labels)
-    ax.set_axis_off()
-
-    fig.tight_layout(pad=2)
-    os.makedirs('./figures/', exist_ok=True)
-    fig.savefig('./figures/bars_ablation_Cancer.png', dpi=600)
-    plt.close(fig)
+    plot_comparison(data_comparison_IEDB, 'bars_comparison_IEDB')
+    plot_ablation_IEDB(data_ablation_IEDB, 'bars_ablation_IEDB')
+    plot_comparison(data_comparison_Cancer, 'bars_comparison_Cancer')
+    plot_ablation_Cancer(data_ablation_Cancer, 'bars_ablation_Cancer')

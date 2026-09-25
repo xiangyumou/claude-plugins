@@ -1,7 +1,7 @@
 # Style guide
 
 This guide covers the reasoning behind the rules in SKILL.md and the patterns to reach for.
-It is based on the figures4papers scripts (see [demos.md](demos.md)), with corrections for
+It is based on the figures4papers scripts (see [the gallery](../gallery/README.md)), with corrections for
 print sizing, accessibility and honest encoding.
 
 ## 1. Pick the chart for the comparison

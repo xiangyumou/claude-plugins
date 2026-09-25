@@ -1,9 +1,33 @@
-import os
+"""Accuracy of LLMs on math and logic brainteasers, by puzzle subcategory.
+
+Figure from the Brainteaser project (Han et al., "Creativity or Brute Force? Using
+Brainteasers as a Window into the Problem-Solving Abilities of Large Language Models").
+Top row: 8 math subcategories; bottom row: 13 logic subcategories. One bar per model,
+y = fraction of puzzles answered correctly. See plot_correctness_by_category.py for the
+top-level categories.
+
+Techniques worth borrowing:
+- A very wide 2 x 13 grid of small bar panels (small multiples) sharing one colour legend,
+  placed in the empty right part of the shorter top row.
+- Colour families as model families (greens = distilled R1, reds = DeepSeek API,
+  yellow = Gemini, blue = o3), so no x tick labels are needed.
+- Bold row labels on the left, because a subcategory name ("Pattern") occurs in both rows.
+
+Run:  python plot_correctness_by_subcategory.py
+      -> figures/correctness_by_subcategory.png and figures/correctness_by_subcategory.pdf
+"""
+from pathlib import Path
+
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib import gridspec as gridspec
+from matplotlib import gridspec
+
+FIGURE_DIR = Path(__file__).resolve().parent / 'figures'
 
 
+# 'result' lists every aggregate category followed by its subcategories (e.g. 'Standard' is
+# followed by Geometry ... Algebra). Only the keys listed in 'subtypes' are plotted here;
+# the other script plots the remaining keys from the same dicts.
 data_math_by_category = {
     'methods': [
         r'DeepSeek R1 Distill Qwen 1.5B',
@@ -29,7 +53,7 @@ data_math_by_category = {
         'Heuristic': np.array([0, 0.260869565, 0.173913044, 0.413043478, 0.673913044, 0.47826087, 0.804347826]),
         'Pattern': np.array([0, 0.214285714, 0.178571429, 0.357142857, 0.642857143, 0.428571429, 0.75]),
         'Arithmetic': np.array([0, 0.333333333, 0.166666667, 0.5, 0.722222222, 0.555555556, 0.888888889]),
-        },
+    },
 }
 
 data_logic_by_category = {
@@ -45,7 +69,6 @@ data_logic_by_category = {
     'colors': ['#DDF3DE', '#AADCA9', '#8BCF8B', '#F6CFCB', '#E9A6A1', '#FFF6CC', '#3775BA'],
     'subtypes': ['0D', '1D', '2D', 'Number', 'Clusters', 'Tree', 'Liars',
                  'Communication', 'Compound', 'Algorithm', 'Math', 'Pattern', 'Linguistic'],
-
     'result': {
         'Simple/large': np.array([0.042105263, 0.178947368, 0.189473684, 0.389473684, 0.410526316, 0.515789474, 0.694736842]),
         '0D': np.array([0.068965517, 0.172413793, 0.206896552, 0.379310345, 0.448275862, 0.517241379, 0.689655172]),
@@ -64,68 +87,65 @@ data_logic_by_category = {
         'Heuristic': np.array([0, 0.12195122, 0.097560976, 0.317073171, 0.365853659, 0.268292683, 0.658536585]),
         'Pattern': np.array([0, 0.153846154, 0.115384615, 0.230769231, 0.346153846, 0.307692308, 0.576923077]),
         'Linguistic': np.array([0, 0.066666667, 0.066666667, 0.466666667, 0.4, 0.2, 0.8]),
-        },
+    },
 }
 
 
-if __name__ == '__main__':
-    plt.rcParams['font.family'] = 'helvetica'
-    plt.rcParams['font.size'] = 24
-    plt.rcParams['axes.spines.right'] = False
-    plt.rcParams['axes.spines.top'] = False
-    plt.rcParams['axes.linewidth'] = 3
+def plot_panel(ax, data, category, row_label=None):
+    """One category: one bar per model (colour = model), accuracy on a 0-1 axis."""
+    ax.bar(np.arange(len(data['methods'])), data['result'][category], color=data['colors'],
+           edgecolor='black', linewidth=2)   # black edges keep the palest colours visible
+    ax.set_title(category, fontsize=36, pad=36)
+    ax.set_ylabel('Probability', fontsize=30, labelpad=12)
+    ax.set_ylim([0, 1])
+    ax.set_xticks([])
+    if row_label is not None:
+        # Bold row label left of the y-label (both rows contain a "Pattern" panel).
+        ax.annotate(row_label, xy=(0, 0.5), xycoords='axes fraction', xytext=(-150, 0),
+                    textcoords='offset points', rotation=90, ha='center', va='center',
+                    fontsize=36, fontweight='bold')
 
-    fig = plt.figure(figsize=(96, 12))
 
-    gs = gridspec.GridSpec(2, 13)
-
-    for subtype_idx, subtype_name in enumerate(data_math_by_category['subtypes']):
-        ax = fig.add_subplot(gs[subtype_idx])
-        num_methods = len(data_math_by_category['methods'])
-        ax.bar(
-            np.arange(num_methods),
-            data_math_by_category['result'][subtype_name],
-            color=data_math_by_category['colors'],
-            label=data_math_by_category['methods'],
-        )
-
-        ax.set_title(data_math_by_category['subtypes'][subtype_idx], fontsize=36, pad=36)
-        ax.set_ylabel('Probability', fontsize=30, labelpad=12)
-        ax.set_ylim([0, 1])
-        ax.set_xticks([])
-
-    ax = fig.add_subplot(gs[11:12])
-    bar = ax.bar(
-        np.arange(num_methods),
-        np.ones_like(np.arange(num_methods)),
-        color=data_math_by_category['colors'],
-        label=data_math_by_category['methods'],
-        hatch='',
-    )
+def legend_panel(ax, data):
+    """Legend-only panel: draw dummy bars, harvest their handles, then remove them."""
+    num_methods = len(data['methods'])
+    bars = ax.bar(np.arange(num_methods), np.ones(num_methods), color=data['colors'],
+                  label=data['methods'], edgecolor='black', linewidth=2)
     handles, labels = ax.get_legend_handles_labels()
-    for b in bar:
+    for b in bars:
         b.remove()
     ax.legend(handles, labels, fontsize=28, loc='center', frameon=False)
     ax.set_axis_off()
 
-    for subtype_idx, subtype_name in enumerate(data_logic_by_category['subtypes']):
-        ax = fig.add_subplot(gs[13 + subtype_idx])
-        num_methods = len(data_logic_by_category['methods'])
-        ax.bar(
-            np.arange(num_methods),
-            data_logic_by_category['result'][subtype_name],
-            color=data_logic_by_category['colors'],
-            label=data_logic_by_category['methods'],
-        )
 
-        ax.set_title(data_logic_by_category['subtypes'][subtype_idx], fontsize=36, pad=36)
-        ax.set_ylabel('Probability', fontsize=30, labelpad=12)
-        ax.set_ylim([0, 1])
-        ax.set_xticks([])
+if __name__ == '__main__':
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['Helvetica', 'Arial', 'Liberation Sans', 'DejaVu Sans']
+    plt.rcParams['font.size'] = 24
+    plt.rcParams['axes.spines.right'] = False
+    plt.rcParams['axes.spines.top'] = False
+    plt.rcParams['axes.linewidth'] = 3
+    plt.rcParams['pdf.fonttype'] = 42   # embed TrueType, not Type 3
+    plt.rcParams['ps.fonttype'] = 42
+    plt.rcParams['svg.fonttype'] = 'none'
 
+    fig = plt.figure(figsize=(96, 12))
+    gs = gridspec.GridSpec(2, 13)
+
+    # Top row: math categories, then the model legend in a free cell.
+    for col, category in enumerate(data_math_by_category['subtypes']):
+        plot_panel(fig.add_subplot(gs[0, col]), data_math_by_category, category,
+                   row_label='Math' if col == 0 else None)
+    legend_panel(fig.add_subplot(gs[0, 9:]), data_math_by_category)
+
+    # Bottom row: logic categories.
+    for col, category in enumerate(data_logic_by_category['subtypes']):
+        plot_panel(fig.add_subplot(gs[1, col]), data_logic_by_category, category,
+                   row_label='Logic' if col == 0 else None)
 
     fig.tight_layout(pad=2)
 
-    os.makedirs('./figures/', exist_ok=True)
-    fig.savefig('./figures/correctness_by_subcategory.png', dpi=300)
+    FIGURE_DIR.mkdir(exist_ok=True)
+    fig.savefig(FIGURE_DIR / 'correctness_by_subcategory.png', dpi=300)
+    fig.savefig(FIGURE_DIR / 'correctness_by_subcategory.pdf')
     plt.close(fig)

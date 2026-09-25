@@ -529,8 +529,10 @@ def _drawn_texts(fig):
             for tick in axis.get_major_ticks() + axis.get_minor_ticks():
                 if not lo - tol <= tick.get_loc() <= hi + tol:
                     hidden.update((id(tick.label1), id(tick.label2)))
+    # Text inside 3D axes reports its box at the unprojected position, so it is skipped.
     return [t for t in fig.findobj(Text)
-            if t.get_visible() and t.get_text().strip() and id(t) not in hidden]
+            if t.get_visible() and t.get_text().strip() and id(t) not in hidden
+            and getattr(t.axes, "name", "") != "3d"]
 
 
 def _overlap(a, b, tol=1.0):
@@ -569,7 +571,8 @@ def check_figure(fig, min_font_pt=5.0, *, check_clipping=True):
     fig_box = fig.bbox
     issues = []
     texts = _drawn_texts(fig)
-    boxes = [t.get_window_extent(renderer) for t in texts]
+    # Text.get_window_extent: for annotations, measure the label only, not the arrow.
+    boxes = [Text.get_window_extent(t, renderer) for t in texts]
 
     small = sorted({round(t.get_fontsize(), 1) for t in texts if t.get_fontsize() < min_font_pt})
     if small:

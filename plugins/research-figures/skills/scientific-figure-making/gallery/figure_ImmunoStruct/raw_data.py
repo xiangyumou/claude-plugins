@@ -1,3 +1,15 @@
+"""Results behind plot_bars.py (ImmunoStruct: IEDB benchmark and CEDAR cancer set).
+
+Each dict holds `mean` and `std` arrays of shape (n_rows, 3); the columns follow
+`metrics` = AUROC, AUPRC, Mean PPVn.
+- data_comparison_*: rows follow `methods`, and `colors` gives one bar colour per method.
+- data_ablation_IEDB: rows follow `ablations`, binary masks over `components`
+  ('11001' = Structure + Sequence + Transfer Learning).
+- data_ablation_Cancer: rows follow `coeffs` = [use transfer learning, contrastive-loss weight].
+
+Error bars: `std` is the SD for AUROC and AUPRC, but the Mean PPVn column is divided by
+sqrt(5) in the source data, i.e. it is the SEM over 5 runs. State this in the caption.
+"""
 import numpy as np
 
 
@@ -36,32 +48,32 @@ data_ablation_IEDB = {
     'components': ['Structure', 'Sequence', 'Bchems', 'MMA', 'Transfer Learning'],
     'metrics': ['AUROC', 'AUPRC', 'Mean PPVn'],
     'mean': np.array([
-       [0.775, 0.442, 0.433],
-       [0.842, 0.553, 0.430],
-       [0.840, 0.547, 0.444],
-       [0.842, 0.554, 0.419],
-       [0.840, 0.547, 0.440],
-       [0.860, 0.615, 0.462],
-       [0.805, 0.497, 0.414],
-       [0.845, 0.568, 0.427],
-       [0.844, 0.569, 0.440],
-       [0.844, 0.561, 0.442],
-       [0.840, 0.554, 0.441],
-       [0.882, 0.696, 0.514],
+        [0.775, 0.442, 0.433],
+        [0.842, 0.553, 0.430],
+        [0.840, 0.547, 0.444],
+        [0.842, 0.554, 0.419],
+        [0.840, 0.547, 0.440],
+        [0.860, 0.615, 0.462],
+        [0.805, 0.497, 0.414],
+        [0.845, 0.568, 0.427],
+        [0.844, 0.569, 0.440],
+        [0.844, 0.561, 0.442],
+        [0.840, 0.554, 0.441],
+        [0.882, 0.696, 0.514],
     ]),
-   'std': np.array([
-       [0.012, 0.022, 0.020 / np.sqrt(5)],
-       [0.006, 0.014, 0.009 / np.sqrt(5)],
-       [0.007, 0.024, 0.028 / np.sqrt(5)],
-       [0.006, 0.020, 0.017 / np.sqrt(5)],
-       [0.006, 0.018, 0.032 / np.sqrt(5)],
-       [0.013, 0.045, 0.015 / np.sqrt(5)],
-       [0.006, 0.022, 0.027 / np.sqrt(5)],
-       [0.007, 0.024, 0.017 / np.sqrt(5)],
-       [0.005, 0.014, 0.035 / np.sqrt(5)],
-       [0.006, 0.017, 0.024 / np.sqrt(5)],
-       [0.006, 0.028, 0.029 / np.sqrt(5)],
-       [0.005, 0.020, 0.021 / np.sqrt(5)],
+    'std': np.array([
+        [0.012, 0.022, 0.020 / np.sqrt(5)],
+        [0.006, 0.014, 0.009 / np.sqrt(5)],
+        [0.007, 0.024, 0.028 / np.sqrt(5)],
+        [0.006, 0.020, 0.017 / np.sqrt(5)],
+        [0.006, 0.018, 0.032 / np.sqrt(5)],
+        [0.013, 0.045, 0.015 / np.sqrt(5)],
+        [0.006, 0.022, 0.027 / np.sqrt(5)],
+        [0.007, 0.024, 0.017 / np.sqrt(5)],
+        [0.005, 0.014, 0.035 / np.sqrt(5)],
+        [0.006, 0.017, 0.024 / np.sqrt(5)],
+        [0.006, 0.028, 0.029 / np.sqrt(5)],
+        [0.005, 0.020, 0.021 / np.sqrt(5)],
     ]),
 }
 
@@ -103,23 +115,23 @@ data_ablation_Cancer = {
                [True, 0], [True, 0.001], [True, 0.01], [True, 0.1]],
     'metrics': ['AUROC', 'AUPRC', 'Mean PPVn'],
     'mean': np.array([
-       [0.723, 0.391, 0.358],
-       [0.712, 0.370, 0.331],
-       [0.727, 0.405, 0.387],
-       [0.700, 0.413, 0.354],
-       [0.756, 0.426, 0.362],
-       [0.762, 0.418, 0.351],
-       [0.771, 0.433, 0.365],
-       [0.725, 0.406, 0.348],
+        [0.723, 0.391, 0.358],
+        [0.712, 0.370, 0.331],
+        [0.727, 0.405, 0.387],
+        [0.700, 0.413, 0.354],
+        [0.756, 0.426, 0.362],
+        [0.762, 0.418, 0.351],
+        [0.771, 0.433, 0.365],
+        [0.725, 0.406, 0.348],
     ]),
-   'std': np.array([
-       [0.027, 0.068, 0.096 / np.sqrt(5)],
-       [0.040, 0.077, 0.114 / np.sqrt(5)],
-       [0.037, 0.080, 0.111 / np.sqrt(5)],
-       [0.036, 0.081, 0.109 / np.sqrt(5)],
-       [0.031, 0.068, 0.103 / np.sqrt(5)],
-       [0.024, 0.064, 0.151 / np.sqrt(5)],
-       [0.024, 0.069, 0.127 / np.sqrt(5)],
-       [0.035, 0.079, 0.129 / np.sqrt(5)],
+    'std': np.array([
+        [0.027, 0.068, 0.096 / np.sqrt(5)],
+        [0.040, 0.077, 0.114 / np.sqrt(5)],
+        [0.037, 0.080, 0.111 / np.sqrt(5)],
+        [0.036, 0.081, 0.109 / np.sqrt(5)],
+        [0.031, 0.068, 0.103 / np.sqrt(5)],
+        [0.024, 0.064, 0.151 / np.sqrt(5)],
+        [0.024, 0.069, 0.127 / np.sqrt(5)],
+        [0.035, 0.079, 0.129 / np.sqrt(5)],
     ]),
 }

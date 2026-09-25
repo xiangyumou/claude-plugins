@@ -24,7 +24,7 @@ Update later with `/plugin marketplace update xiangyumou`.
 
 | Plugin | What it does | License |
 |--------|--------------|---------|
-| [research-figures](plugins/research-figures) | Publication-ready matplotlib figures: venue-sized layouts, semantic palette, TrueType PDF export, automatic layout checks (`pubfig.py` helper + recipes) | CC BY-NC 4.0, adapted from [figures4papers](https://github.com/ChenLiu-1996/figures4papers) |
+| [research-figures](plugins/research-figures) | 科研画图. Skill `scientific-figure-making`: publication-ready matplotlib figures (venue-sized layouts, semantic palette, TrueType PDF export, automatic layout checks via `pubfig.py`) plus a [gallery](plugins/research-figures/skills/scientific-figure-making/gallery/README.md) of 25 reviewed figure scripts from published papers | CC BY-NC 4.0, adapted from [figures4papers](https://github.com/ChenLiu-1996/figures4papers) |
 
 ## Using a skill outside Claude Code
 
@@ -36,10 +36,14 @@ Each skill is a plain folder under `plugins/<plugin>/skills/<skill>/` (`SKILL.md
 ln -s ~/Projects/claude-plugins/plugins/research-figures/skills/scientific-figure-making ~/.codex/skills/scientific-figure-making
 ```
 
-## Adding a plugin
+## Adding a skill
 
-1. Create `plugins/<name>/.claude-plugin/plugin.json` and `plugins/<name>/skills/<skill>/SKILL.md`.
-2. Add an entry to `.claude-plugin/marketplace.json`.
+Plugins are grouped by purpose: one plugin per category (e.g. `research-figures`), holding any
+number of skills. Skills must sit directly under `skills/<skill>/SKILL.md` (no deeper nesting).
+
+1. Add the skill to the matching plugin as `plugins/<plugin>/skills/<skill>/SKILL.md`, or create a new
+   category with `plugins/<plugin>/.claude-plugin/plugin.json`.
+2. For a new plugin, add an entry to `.claude-plugin/marketplace.json`.
 3. Run `claude plugin validate .` and bump `version` when changing an existing plugin.
 
 ## License

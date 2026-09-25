@@ -1,16 +1,43 @@
-import os
+"""Concept figure for VIGIL: why vision-grounded preference optimisation helps.
+
+Left: toy answer distributions. Without the image the model follows its text
+prior P(y|x_t); with a blanked image it is flat-ish; with the real image it
+peaks on the correct answer y*. The vertical arrow at y* is the visual
+information gain (VIG) that VIGIL rewards.
+Right: schematic of a textual manifold (gray) and a multimodal manifold (blue)
+as KDE contours over synthetic point clouds; standard DPO stays on the textual
+ridge (dashed), VIGIL's path (solid) moves into the multimodal one. Red stars
+mark checkpoints along each path.
+
+Everything is synthetic and seeded (np.random.default_rng(42)), so the figure is
+reproducible. Techniques worth borrowing:
+  - filled density curves (fill_between, low alpha) with a double-headed
+    annotate() arrow to name a gap between two curves;
+  - "manifold" clouds: points sampled in a noisy tube around a spline, drawn as
+    faint scatter + gaussian_kde contour lines at upper quantile levels;
+  - a smoothstep (3u^2 - 2u^3) blend between two paths for a transition curve;
+  - axis-free schematic panel with white-boxed labels (bbox) over busy data.
+
+Run:  python plot_concept.py   ->  figures/concept.{png,pdf}
+"""
+from pathlib import Path
+
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.stats import gaussian_kde
 from scipy.interpolate import CubicSpline
 
+FIG_DIR = Path(__file__).resolve().parent / "figures"
+
 
 def _gauss(x, mu, sig):
+    """Gaussian bump scaled to a peak of 1 (a shape, not a normalised density)."""
     y = np.exp(-0.5 * ((x - mu) / sig) ** 2)
     return y / (y.max() + 1e-12)
 
 
 def _sample_tube(center_curve, t_samples, rng, sigma_u=0.08, sigma_v=0.18):
+    """Scatter points around center_curve(t): sigma_u across the curve, sigma_v along it."""
     pts = center_curve(t_samples)
     eps = 1e-3
     pts_f = center_curve(np.clip(t_samples + eps, 0, 1))
@@ -24,6 +51,7 @@ def _sample_tube(center_curve, t_samples, rng, sigma_u=0.08, sigma_v=0.18):
 
 
 def _mixture_t(n, centers, scales, weights, rng):
+    """Positions t in [0, 1] from a Gaussian mixture, so point density varies along the curve."""
     weights = np.array(weights, dtype=float)
     weights /= weights.sum()
     comp = rng.choice(len(centers), size=n, p=weights)
@@ -32,6 +60,7 @@ def _mixture_t(n, centers, scales, weights, rng):
 
 
 def _kde_prepare(P, grid=280, pad_x=1.8, pad_y=1.3):
+    """Evaluate a 2-D KDE of points P on a padded grid (for contour plots)."""
     Xv, Yv = P[:, 0], P[:, 1]
     kde = gaussian_kde(np.vstack([Xv, Yv]))
     xmin, xmax = Xv.min() - pad_x, Xv.max() + pad_x
@@ -69,11 +98,11 @@ def plot_distribution(ax):
         xytext=(y_star, blind_star),
         arrowprops=dict(arrowstyle="<->", linewidth=2),
     )
-    ax.text(y_star + 0.02, 0.5 * (see_star + blind_star), "      VIG",
-            ha="left", va="center", fontsize=24, fontfamily='helvetica')
+    ax.text(y_star + 0.11, 0.5 * (see_star + blind_star), "VIG",  # clear of the blue curve
+            ha="left", va="center", fontsize=24)
 
     ax.set_xticks([0, 0.5, 1])
-    ax.set_xticklabels([-1, 0, 1])
+    ax.set_xticklabels([-1, 0, 1])  # relabel the [0, 1] grid as a symmetric toy axis
     ax.set_xlim(0, 1.05)
     ax.set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
     ax.set_ylim(0, 1.25)
@@ -82,7 +111,7 @@ def plot_distribution(ax):
     ax.spines['left'].set_linewidth(3)
     ax.spines['bottom'].set_linewidth(3)
     ax.tick_params(width=1.5, length=8, labelsize=24)
-    ax.legend(loc="upper center", frameon=False, ncols=3, prop={"family": "monospace", "size": 24})
+    ax.legend(loc="upper center", frameon=False, ncols=3, fontsize=24)  # ylim 1.25 leaves room above the peaks
 
 
 def plot_manifold(ax):
@@ -111,6 +140,7 @@ def plot_manifold(ax):
     pts_text = _sample_tube(curve_text, t_text, rng, sigma_u=0.09, sigma_v=0.14)
     pts_mm = _sample_tube(curve_mm, t_mm, rng, sigma_u=0.08, sigma_v=0.13)
 
+    # Stretch the unit-square curves to a wide canvas and stack the two manifolds vertically.
     A = np.array([[10.0, 0.0], [0.0, 3.5]])
     b_text = np.array([0.6, 0.9])
     b_mm = np.array([0.6, 2.4])
@@ -122,6 +152,8 @@ def plot_manifold(ax):
     ridge_t = curve_text(tt) @ A.T + b_text
     ridge_m = curve_mm(tt) @ A.T + b_mm
 
+    # VIGIL's path: start on the textual ridge, smoothstep-blend into the multimodal
+    # ridge by t_mid (with a small bump), then follow the multimodal ridge.
     t_mid = 0.42
     idx_mid = np.searchsorted(tt, t_mid)
     u = np.linspace(0, 1, idx_mid)
@@ -165,6 +197,7 @@ def plot_manifold(ax):
     ax.text(xmin + 0.9, ymax + 0.2, r"Multimodal manifold $\mathcal{M}_\text{mm}$", va="top", bbox=bbox, size=24)
     ax.text(xmin + 0.9, ymin, r"Textual manifold $\mathcal{M}_\text{t}$", va="bottom", bbox=bbox, size=24)
 
+    # One input sample x and its two embeddings (text-only and multimodal).
     x0, y0 = xmin + 2.1, (ymin + ymax) / 2 - 0.2
     t0 = 0.12
     z_t0 = (curve_text(np.array([t0])) @ A.T + b_text)[0]
@@ -218,17 +251,23 @@ def plot_concept():
     fig.tight_layout(pad=0.5)
     fig.subplots_adjust(wspace=0.25)
 
+    # Nudge the axis-free schematic down to align it visually with the left panel.
     pos = ax_right.get_position()
     ax_right.set_position([pos.x0, pos.y0 - 0.04, pos.width, pos.height])
 
-    os.makedirs("./figures/", exist_ok=True)
-    fig.savefig("./figures/concept.png", dpi=300)
+    FIG_DIR.mkdir(exist_ok=True)
+    fig.savefig(FIG_DIR / "concept.png", dpi=300)
+    fig.savefig(FIG_DIR / "concept.pdf")
     plt.close(fig)
 
 
 if __name__ == "__main__":
-    plt.rcParams["font.family"] = "helvetica"
+    plt.rcParams["font.family"] = "sans-serif"
+    plt.rcParams["font.sans-serif"] = ["Helvetica", "Arial", "Liberation Sans", "DejaVu Sans"]
     plt.rcParams["font.size"] = 18
+    plt.rcParams["pdf.fonttype"] = 42  # embed TrueType, not Type 3
+    plt.rcParams["ps.fonttype"] = 42
+    plt.rcParams["svg.fonttype"] = "none"
     plt.rcParams["axes.linewidth"] = 1.5
     plt.rcParams["axes.spines.top"] = False
     plt.rcParams["axes.spines.right"] = False

@@ -102,4 +102,4 @@ curves, correlation heatmap). Start by copying the closest one.
 |------|-----------|
 | [references/api.md](references/api.md) | You need exact helper signatures, presets, venue widths, or the checks' behaviour |
 | [references/style-guide.md](references/style-guide.md) | Choosing a chart type, layout pattern, bar/line/heatmap encoding, or explaining the rationale |
-| [references/demos.md](references/demos.md) | Matching a specific figures4papers figure (radar, trajectories, sphere schematics) |
+| [gallery/README.md](gallery/README.md) | A chart type `pubfig` does not wrap (radar, stacked composition, timeline, table-heatmap, 3D/sphere schematics): index of 25 reviewed scripts from published papers, each with a PNG preview |

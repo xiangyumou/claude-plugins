@@ -1,97 +1,115 @@
+"""Diffusion operator on a 2-D Swiss roll: transition matrix (left) and graph (right).
+
+Schematic from the Cflows project (ChenLiu-1996/figures4papers). A noisy 2-D Swiss
+roll is sampled, a Gaussian-kernel transition matrix P is built (rows sum to 1), and
+the same P is shown two ways:
+  - left:  P as a heatmap, with points ordered by the manifold coordinate t, so the
+           manifold structure shows up as a band along the diagonal;
+  - right: the point cloud coloured by t (viridis), with an edge between every pair
+           whose transition probability exceeds a threshold and edge opacity equal
+           to (twice) that probability.
+
+Techniques worth borrowing:
+  - reorder a kernel/affinity matrix by a latent coordinate before `imshow` so its
+    structure is visible;
+  - draw thousands of weighted edges as ONE `LineCollection` with per-segment RGBA
+    colours (fast, small PDF) instead of one `ax.plot` call per edge;
+  - white marker edges + alpha to separate overlapping scatter points;
+  - axes turned off for a schematic panel.
+
+The data are random but seeded (SEED), so the figure is reproducible.
+
+Run:  python diffusion_swiss_roll.py  ->  figures/diffusion_swiss_roll.{png,pdf}
+"""
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 from scipy.spatial.distance import pdist, squareform
 
-# Generate Swiss Roll data
-def generate_swiss_roll_2d(n_samples=80, noise=0.1):
-    t = 1.5 * np.pi * (1 + 2 * np.random.rand(n_samples))
-    x = t * np.cos(t)
-    z = t * np.sin(t)
+SEED = 0
+FIG_DIR = Path(__file__).resolve().parent / 'figures'
 
-    # Add some noise
-    x += noise * np.random.randn(n_samples)
-    z += noise * np.random.randn(n_samples)
 
+def generate_swiss_roll_2d(n_samples=80, noise=0.1, rng=None):
+    """Sample a noisy 2-D Swiss roll; returns coordinates (x, z) and manifold coordinate t."""
+    rng = np.random.default_rng() if rng is None else rng
+    t = 1.5 * np.pi * (1 + 2 * rng.random(n_samples))
+    x = t * np.cos(t) + noise * rng.standard_normal(n_samples)
+    z = t * np.sin(t) + noise * rng.standard_normal(n_samples)
     return x, z, t
 
-# Compute diffusion matrix (transition probabilities)
+
 def compute_diffusion_matrix(x, z, t, sigma=1.0):
-    # Order points by manifold parameter t for better matrix visualization
+    """Row-stochastic Gaussian-kernel transition matrix, with points sorted by t.
+
+    Returns P (in sorted order) and `sorted_indices`, where sorted position k holds
+    original point sorted_indices[k].
+    """
     sorted_indices = np.argsort(t)
-    x_sorted = x[sorted_indices]
-    z_sorted = z[sorted_indices]
+    points = np.column_stack([x[sorted_indices], z[sorted_indices]])
     t_sorted = t[sorted_indices]
 
-    # Compute pairwise distances in ambient space
-    points = np.column_stack([x_sorted, z_sorted])
+    # Ambient (Euclidean) distance plus a manifold term along t, which keeps
+    # neighbouring arms of the roll from being connected.
     distances = squareform(pdist(points))
-
-    # Compute manifold distances (along parameter t)
     t_distances = np.abs(t_sorted[:, None] - t_sorted[None, :])
-
-    # Combine spatial and manifold distances (emphasize manifold structure)
     combined_distances = distances + 0.5 * t_distances
 
-    # Gaussian kernel for transition probabilities
     P = np.exp(-combined_distances**2 / (2 * sigma**2))
-
-    # Make matrix sparser by thresholding small values
-    P[P < 0.01] = 0
+    P[P < 0.01] = 0  # sparsify
 
     # Normalize rows to make it a proper transition matrix
     row_sums = P.sum(axis=1)
-    row_sums[row_sums == 0] = 1  # Avoid division by zero
+    row_sums[row_sums == 0] = 1  # avoid division by zero
     P = P / row_sums[:, None]
 
     return P, sorted_indices
 
+
 if __name__ == '__main__':
-    # Create two subplots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+    plt.rcParams['pdf.fonttype'] = 42
+    plt.rcParams['ps.fonttype'] = 42
+    plt.rcParams['svg.fonttype'] = 'none'
 
-    # Generate swiss roll point cloud (smaller for visualization clarity)
-    x, z, t = generate_swiss_roll_2d(n_samples=500, noise=0.5)
-
-    # Compute diffusion matrix
+    rng = np.random.default_rng(SEED)
+    x, z, t = generate_swiss_roll_2d(n_samples=500, noise=0.5, rng=rng)
     P, sorted_indices = compute_diffusion_matrix(x, z, t, sigma=2)
 
-    # Left plot: Diffusion Matrix
-    im = ax1.imshow(P, cmap='Reds', aspect='equal', origin='upper')
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+
+    # Left: transition matrix, rows/columns ordered by t. The colour scale runs to
+    # P.max(); an isolated point (few neighbours -> large P) can wash out the band,
+    # which is why the seed matters for how this panel looks.
+    ax1.imshow(P, cmap='Reds', aspect='equal', origin='upper')
     ax1.axis('off')
-    ax1.set_facecolor('white')
 
-    # Right plot: Swiss Roll with probability-weighted connections
-    # Use original (unsorted) coordinates for the swiss roll plot
-    x_orig, z_orig, t_orig = x, z, t
+    # Right: point cloud in original order. Map P back to the original point order
+    # (inverse permutation), symmetrize with max(P_ij, P_ji) and keep strong edges.
+    inverse = np.argsort(sorted_indices)
+    P_orig = P[np.ix_(inverse, inverse)]
+    P_sym = np.maximum(P_orig, P_orig.T)
+    threshold = 0.02  # only draw edges above this transition probability
+    i_idx, j_idx = np.nonzero(np.triu(P_sym > threshold, k=1))
+    prob = P_sym[i_idx, j_idx]
 
-    # Draw line segments between points with opacity = transition probability
-    threshold = 0.02  # Only draw lines above this probability threshold
+    segments = np.stack([np.column_stack([x[i_idx], z[i_idx]]),
+                         np.column_stack([x[j_idx], z[j_idx]])], axis=1)
+    edge_colors = np.zeros((len(prob), 4))            # black ...
+    edge_colors[:, 3] = np.clip(prob * 2, 0, 1)       # ... with alpha = 2 * probability
+    ax2.add_collection(LineCollection(segments, colors=edge_colors, linewidths=2, zorder=1))
 
-    for i in range(len(x_orig)):
-        for j in range(i+1, len(x_orig)):
-            # Find corresponding indices in sorted matrix
-            orig_i_in_sorted = np.where(sorted_indices == i)[0][0]
-            orig_j_in_sorted = np.where(sorted_indices == j)[0][0]
-
-            # Get transition probability from matrix
-            prob = max(P[orig_i_in_sorted, orig_j_in_sorted], P[orig_j_in_sorted, orig_i_in_sorted])
-
-            if prob > threshold:
-                ax2.plot([x_orig[i], x_orig[j]], [z_orig[i], z_orig[j]],
-                        color='black', linewidth=2, alpha=prob*2, zorder=1)
-
-    # Plot the swiss roll points on top
-    scatter = ax2.scatter(x_orig, z_orig, c=t_orig, cmap='viridis', s=100,
-                          alpha=0.5, edgecolors='white', linewidth=1, zorder=2)
-
-    # Styling for swiss roll plot
+    ax2.scatter(x, z, c=t, cmap='viridis', s=100,
+                alpha=0.5, edgecolors='white', linewidth=1, zorder=2)
     ax2.set_aspect('equal')
     ax2.axis('off')
-    ax2.set_facecolor('white')
 
-    # Clean overall styling
     fig.patch.set_facecolor('white')
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0, wspace=0.02)
 
-    plt.savefig('figures/diffusion_swiss_roll.png', dpi=300, bbox_inches='tight',
-                facecolor='white', edgecolor='none', pad_inches=1)
+    FIG_DIR.mkdir(exist_ok=True)
+    for ext in ('png', 'pdf'):
+        fig.savefig(FIG_DIR / f'diffusion_swiss_roll.{ext}', dpi=300, bbox_inches='tight',
+                    facecolor='white', edgecolor='none', pad_inches=0.2)
+    plt.close(fig)

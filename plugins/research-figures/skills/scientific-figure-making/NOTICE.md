@@ -14,3 +14,5 @@ Changes from the original (2026-09-25):
 - Resolved contradictions in colour roles; added guidance on zero-based bars, uncertainty,
   diverging colormaps for signed data, and colour-vision accessibility.
 - Merged `design-theory.md`, `common-patterns.md` and `tutorials.md` into `style-guide.md`.
+- `gallery/` contains the upstream `figure_*` scripts and `assets/`, reviewed and modified;
+  the changes are listed in [gallery/README.md](gallery/README.md#changes-from-upstream).

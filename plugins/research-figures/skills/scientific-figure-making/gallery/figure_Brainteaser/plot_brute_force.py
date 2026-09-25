@@ -1,8 +1,29 @@
-import os
+"""Brute-force analysis of LLM solutions to brainteasers (math and logic).
+
+Figure from the Brainteaser project (Han et al., "Creativity or Brute Force? Using
+Brainteasers as a Window into the Problem-Solving Abilities of Large Language Models").
+Each panel is one prompt; each bar is one model; the bar is a 100% stack that splits
+the puzzles into: only the model brute-forced / only the human reference brute-forced /
+neither / both. Top row: math brainteasers; bottom row: logic brainteasers.
+
+Techniques worth borrowing:
+- 100% stacked bars where colour = model and hatch = stack segment, with two separate
+  legend-only panels (one for colours, one for hatches) built from throw-away bars.
+- The key segment (bottom, "Only Model") is drawn at full colour and labelled with
+  gold-on-black-stroke numbers (patheffects); the other segments use a lighter tint.
+- Bold row labels on the left, because both rows share the same panel titles.
+
+Run:  python plot_brute_force.py   ->  figures/brute_force.png and figures/brute_force.pdf
+"""
+from pathlib import Path
+
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib import gridspec as gridspec
+from matplotlib import gridspec
 from matplotlib import patheffects as path_effects
+from matplotlib.colors import to_rgb
+
+FIGURE_DIR = Path(__file__).resolve().parent / 'figures'
 
 
 data_brute_force_math = {
@@ -103,146 +124,90 @@ data_brute_force_logic = {
     },
 }
 
+
+def lighten(color, amount=0.8):
+    """Opaque tint of `color` (same look as alpha=`amount` on white, but crisp edges/hatches)."""
+    return tuple(amount * np.array(to_rgb(color)) + (1 - amount))
+
+
+def plot_row(fig, gs, row, data, row_label):
+    """One row of four prompt panels: 100% stacked bars, one bar per model."""
+    num_methods = len(data['methods'])
+    x = np.arange(num_methods)
+    for prompt_idx, prompt_name in enumerate(data['prompts']):
+        ax = fig.add_subplot(gs[row, prompt_idx])
+        result = data['result'][prompt_name]      # (num_methods, num_subtypes), rows sum to 1
+        bottoms = np.cumsum(result, axis=1) - result
+
+        # Bottom segment ("Only Model"): full colour + value labels.
+        bars = ax.bar(x, result[:, 0], color=data['colors'], hatch=data['hatch_styles'][0],
+                      edgecolor='black', linewidth=2)
+        for bar in bars:
+            height = bar.get_height()
+            # Centre the label in the segment, but keep short segments' labels off the x-axis.
+            ax.text(bar.get_x() + bar.get_width() / 2, max(height / 2, 0.05), f'{height:.3f}',
+                    ha='center', va='center', color='#FFD700', fontsize=20,
+                    path_effects=[path_effects.Stroke(linewidth=4, foreground='black'),
+                                  path_effects.Normal()])
+
+        # Remaining segments stacked on top in a lighter tint.
+        light_colors = [lighten(c) for c in data['colors']]
+        for subtype_idx in range(1, len(data['subtypes'])):
+            ax.bar(x, result[:, subtype_idx], bottom=bottoms[:, subtype_idx],
+                   color=light_colors, hatch=data['hatch_styles'][subtype_idx],
+                   edgecolor='black', linewidth=2)
+
+        ax.set_title(prompt_name, fontsize=36, pad=36)
+        ax.set_ylabel('Probability', fontsize=30, labelpad=12)
+        ax.set_ylim([0, 1.01])
+        ax.set_xticks([])
+        if prompt_idx == 0:
+            ax.annotate(row_label, xy=(0, 0.5), xycoords='axes fraction', xytext=(-150, 0),
+                        textcoords='offset points', rotation=90, ha='center', va='center',
+                        fontsize=36, fontweight='bold')
+
+
+def legend_panel(ax, labels, colors, hatches):
+    """Legend-only panel: draw dummy bars, harvest their handles, then remove them."""
+    bars = ax.bar(np.arange(len(labels)), np.ones(len(labels)), color=colors, label=labels,
+                  hatch=hatches, edgecolor='black', linewidth=3)
+    handles, legend_labels = ax.get_legend_handles_labels()
+    for b in bars:
+        b.remove()
+    ax.legend(handles, legend_labels, fontsize=30, loc='center', frameon=False)
+    ax.set_axis_off()
+
+
 if __name__ == '__main__':
-    plt.rcParams['font.family'] = 'helvetica'
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['Helvetica', 'Arial', 'Liberation Sans', 'DejaVu Sans']
+    # Render $\bf{...}$ in the legend with the same sans-serif family as the rest of the text.
+    # ('custom' maps \bf to 'sans:bold'; cal is only reset to avoid a missing-'cursive' warning.)
+    plt.rcParams['mathtext.fontset'] = 'custom'
+    plt.rcParams['mathtext.cal'] = 'sans'
     plt.rcParams['font.size'] = 24
     plt.rcParams['axes.spines.right'] = False
     plt.rcParams['axes.spines.top'] = False
     plt.rcParams['axes.linewidth'] = 3
+    plt.rcParams['pdf.fonttype'] = 42   # embed TrueType, not Type 3
+    plt.rcParams['ps.fonttype'] = 42
+    plt.rcParams['svg.fonttype'] = 'none'
 
     fig = plt.figure(figsize=(52, 12))
-
     gs = gridspec.GridSpec(2, 5)
 
-    for prompt_idx, prompt_name in enumerate(data_brute_force_math['prompts']):
-        ax = fig.add_subplot(gs[prompt_idx])
-        num_methods = len(data_brute_force_math['methods'])
-        bars = ax.bar(
-            np.arange(num_methods),
-            data_brute_force_math['result'][prompt_name][:, 0],
-            color=data_brute_force_math['colors'],
-            label=data_brute_force_math['methods'],
-            hatch=data_brute_force_math['hatch_styles'][0],
-            edgecolor='black',
-            linewidth=2,
-        )
+    plot_row(fig, gs, 0, data_brute_force_math, 'Math')
+    plot_row(fig, gs, 1, data_brute_force_logic, 'Logic')
 
-        for bar in bars:
-            height = bar.get_height()
-            text = ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                height / 2,
-                f'{height:.3f}',
-                ha='center',
-                va='center',
-                color='#FFD700',
-                fontsize=20,
-                path_effects=[
-                    path_effects.Stroke(linewidth=4, foreground='black'),
-                    path_effects.Normal()
-                ]
-            )
-
-        for subtype_idx in range(1, len(data_brute_force_math['subtypes'])):
-            ax.bar(
-                np.arange(num_methods),
-                data_brute_force_math['result'][prompt_name][:, subtype_idx],
-                color=data_brute_force_math['colors'],
-                label=data_brute_force_math['methods'],
-                hatch=data_brute_force_math['hatch_styles'][subtype_idx],
-                bottom=np.cumsum(data_brute_force_math['result'][prompt_name], axis=1)[:, subtype_idx - 1],
-                edgecolor='black',
-                linewidth=2,
-                alpha=0.8,
-            )
-
-        ax.set_title(data_brute_force_math['prompts'][prompt_idx], fontsize=36, pad=36)
-        ax.set_ylabel('Probability', fontsize=30, labelpad=12)
-        ax.set_ylim([0, 1.01])
-        ax.set_xticks([])
-
-    ax = fig.add_subplot(gs[4])
-    bar = ax.bar(
-        np.arange(num_methods),
-        np.ones_like(np.arange(num_methods)),
-        color=data_brute_force_math['colors'],
-        label=data_brute_force_math['methods'],
-        hatch='',
-        edgecolor='black',
-        linewidth=3,
-    )
-    handles, labels = ax.get_legend_handles_labels()
-    for b in bar:
-        b.remove()
-    ax.legend(handles, labels, fontsize=30, loc='center', frameon=False)
-    ax.set_axis_off()
-
-    for prompt_idx, prompt_name in enumerate(data_brute_force_logic['prompts']):
-        ax = fig.add_subplot(gs[prompt_idx + 5])
-        num_methods = len(data_brute_force_logic['methods'])
-        bars = ax.bar(
-            np.arange(num_methods),
-            data_brute_force_logic['result'][prompt_name][:, 0],
-            color=data_brute_force_logic['colors'],
-            label=data_brute_force_logic['methods'],
-            hatch=data_brute_force_logic['hatch_styles'][0],
-            edgecolor='black',
-            linewidth=2,
-        )
-
-        for bar in bars:
-            height = bar.get_height()
-            text = ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                height / 2,
-                f'{height:.3f}',
-                ha='center',
-                va='center',
-                color='#FFD700',
-                fontsize=20,
-                path_effects=[
-                    path_effects.Stroke(linewidth=4, foreground='black'),
-                    path_effects.Normal()
-                ]
-            )
-
-        for subtype_idx in range(1, len(data_brute_force_logic['subtypes'])):
-            ax.bar(
-                np.arange(num_methods),
-                data_brute_force_logic['result'][prompt_name][:, subtype_idx],
-                color=data_brute_force_logic['colors'],
-                label=data_brute_force_logic['methods'],
-                hatch=data_brute_force_logic['hatch_styles'][subtype_idx],
-                bottom=np.cumsum(data_brute_force_logic['result'][prompt_name], axis=1)[:, subtype_idx - 1],
-                edgecolor='black',
-                linewidth=2,
-                alpha=0.8,
-            )
-
-        ax.set_title(data_brute_force_logic['prompts'][prompt_idx], fontsize=36, pad=36)
-        ax.set_ylabel('Probability', fontsize=30, labelpad=12)
-        ax.set_ylim([0, 1.01])
-        ax.set_xticks([])
-
-    ax = fig.add_subplot(gs[9])
-    num_subtypes = len(data_brute_force_math['subtypes'])
-    bar = ax.bar(
-        np.arange(num_subtypes),
-        np.ones_like(np.arange(num_subtypes)),
-        color='white',
-        label=data_brute_force_math['subtypes'],
-        hatch=data_brute_force_math['hatch_styles'],
-        edgecolor='black',
-        linewidth=3,
-    )
-    handles, labels = ax.get_legend_handles_labels()
-    for b in bar:
-        b.remove()
-    ax.legend(handles, labels, fontsize=30, loc='center', frameon=False)
-    ax.set_axis_off()
+    # Column 5: colour legend (models) on top, hatch legend (stack segments) below.
+    legend_panel(fig.add_subplot(gs[0, 4]), data_brute_force_math['methods'],
+                 data_brute_force_math['colors'], '')
+    legend_panel(fig.add_subplot(gs[1, 4]), data_brute_force_math['subtypes'],
+                 'white', data_brute_force_math['hatch_styles'])
 
     fig.tight_layout(pad=2)
 
-    os.makedirs('./figures/', exist_ok=True)
-    fig.savefig('./figures/brute_force.png', dpi=300)
+    FIGURE_DIR.mkdir(exist_ok=True)
+    fig.savefig(FIGURE_DIR / 'brute_force.png', dpi=300)
+    fig.savefig(FIGURE_DIR / 'brute_force.pdf')
     plt.close(fig)
