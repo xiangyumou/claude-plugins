@@ -1,0 +1,45 @@
+{
+  "project": "descriptive-project-name",
+  "source_files": {
+    "proposal": "path/to/proposal",
+    "organizer_requirements": "path/to/requirements",
+    "presenter_video": null,
+    "approved_script": "path/to/script"
+  },
+  "limits": {
+    "max_duration_seconds": null,
+    "max_size_bytes": null,
+    "required_format": "mp4"
+  },
+  "approved": {
+    "script_version": null,
+    "voice_sample": null,
+    "visual_direction": null
+  },
+  "voice_generation": {
+    "tts_model_or_service": null,
+    "reference_audio": null,
+    "generation_settings": null
+  },
+  "speech_alignment": {
+    "asr_model": null,
+    "alignment_method": null
+  },
+  "timeline": "work/timeline.json",
+  "word_timestamps": "work/words.json",
+  "subtitles": "work/subtitles.srt",
+  "audio": {
+    "dry_voice": "work/voice.wav",
+    "music": null,
+    "music_source_and_license": null,
+    "final_mix": null
+  },
+  "assets_manifest": "work/assets.json",
+  "latest_output": null,
+  "open_feedback": [],
+  "validation": {
+    "timeline": null,
+    "container_duration_size": null,
+    "watched_and_listened_segments": []
+  }
+}
