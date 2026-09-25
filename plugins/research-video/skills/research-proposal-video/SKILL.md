@@ -4,10 +4,11 @@ description: >-
   Create or revise research proposal, grant, fellowship or pitch videos (科研 proposal 视频、
   申请短片): turn a proposal or PPT into a narrated film with voiceover (TTS, voice samples,
   cloning), background music, word-timed cuts, subtitles and smooth image motion; add real
-  presenter footage from an older video; deliver editable slides, a transcript and SRT when
-  asked. Also for partial edits of an existing film, such as the voice, music level, ending or
-  some shots. Ships tested scripts for word timestamps, subtitle timing, timeline checks and
-  MP4 rendering.
+  presenter footage (including lip-syncing a cleaner re-recording onto it); deliver editable
+  slides, a transcript and SRT when asked. Also for partial edits of an existing film, such as
+  the voice, music level, ending or some shots. Ships tested scripts for word timestamps,
+  subtitles, sample-exact audio placement, footage lip sync, word-anchored timelines, HTML
+  card screenshots with layout checks, MP4 rendering of image and video scenes, and a final output/sync check.
 ---
 
 # Research proposal to narrated film
@@ -31,16 +32,48 @@ description: >-
 
 ## 脚本
 
-四个脚本在本 skill 的 `scripts/` 里，就地运行，不要复制（`render_video.py` 和 `make_subtitles.py` 会导入同目录的脚本）。参考文件里的 `scripts/...` 都指这个目录。依赖：Python 3、Pillow、FFmpeg；识别时间戳另需 `pip install faster-whisper`。
+脚本都在本 skill 的 `scripts/` 里，就地运行，不要复制（它们会互相导入）。参考文件里的 `scripts/...` 都指这个目录。依赖：Python 3、NumPy、Pillow、FFmpeg；取词时间戳另需 `pip install faster-whisper`（识别），有定稿时推荐另装 `pip install qwen-asr`（强制对齐）。开工先确认哪个 Python 里装齐了这些包，记进状态记录。
 
 | 脚本 | 作用 |
 |---|---|
-| `align_words.py` | faster-whisper 识别配音，输出带 id 的词级时间戳 `words.json`；给 `--script` 时逐处列出与认可稿不一致的地方 |
+| `align_words.py` | 对**纯人声**取带 id 的词级时间戳：`--aligner qwen` 用 Qwen3-ForcedAligner 把定稿直接对到音频上（文字与稿子一致、结果可复现，推荐），默认 faster-whisper 识别；把落在静音里的词起点推到真正出声处；`--script` 逐处列出与认可稿不一致的地方 |
 | `make_subtitles.py` | 用认可稿的文字、`words.json` 的时间生成 SRT；按句、再按逗号切成均匀短条，支持中英文 |
-| `check_timeline.py` | 检查时间线：镜头衔接与溶解重叠、素材存在、转场中点是否对准关键词 |
-| `render_video.py` | 图片主导的成片：平滑推近、溶解、逐帧字幕（自动选中文字体）、配乐淡入淡出和人声闪避，H.264/AAC MP4；`--start/--end` 渲染局部预览 |
+| `place_audio.py` | 把多段音频按采样点精确放到一条时间轴上（裁切、变速、增益、整体响度），代替 adelay+amix |
+| `sync_to_footage.py` | 真人画面的原声不能用、另有同内容的干净录音时，按短句自动对口型（DTW + 分段变速），`--asr-check` 独立验证 |
+| `build_timeline.py` | 用“哪个镜头从哪个词开始”的简短计划生成 `timeline.json`，转场中点自动对准词，写出前先检查 |
+| `check_timeline.py` | 检查时间线：镜头衔接与溶解重叠、素材和视频片段长度、转场中点是否对准关键词 |
+| `render_video.py` | 图片和真人视频镜头一次渲染：平滑推近、溶解、淡入、逐帧字幕、配乐淡入淡出和人声闪避，H.264/AAC MP4；`--start/--end` 渲染局部预览 |
+| `shoot_cards.py` | 把 HTML/CSS 卡片按成片分辨率截成 PNG，同时检查版面：文字超出卡片或画面、文字互相重叠、线条穿过文字，有问题返回非零 |
+| `check_output.py` | 交付前检查成片：音视频时长是否一致、时长/大小限制、编码、响度与真峰值；`--ref` 用互相关核对人声在片中的位置（抓整体偏移） |
+
+默认流程（细节见 [editing-and-delivery.md](references/editing-and-delivery.md)）：
+
+    shoot_cards.py work/cards/cards.html work/cards/out                               # 截图并检查版面
+    place_audio.py work/voice_full.wav --duration D intro_voice.wav@0 voice.wav@7.8   # 一条人声轨
+    align_words.py work/voice_full.wav work/words.json --aligner qwen --language en --script work/script.txt
+    make_subtitles.py work/script.txt work/words.json work/subtitles.srt
+    build_timeline.py work/plan.json work/timeline.json                               # 已含检查
+    render_video.py work/timeline.json work/preview.mp4 ... --start 0 --end 15         # 先看接点
+    render_video.py work/timeline.json outputs/film.mp4 --voice work/voice_full.wav \
+        --music work/music.wav --subtitles work/subtitles.srt
+    check_output.py outputs/film.mp4 --max-duration 120 --max-mb 50 --ref work/voice_full.wav
+
+人声、画面、字幕共用**一条**从 0 开始的时间轴：先拼好整条人声，再在它上面取词时间、做字幕和时间线，最后一次渲染。不要分段渲染再拼接，也不要事后给整片加一段开头——那会把后面所有东西一起推后或提前。
 
 720p 渲染耗时大约与片长相当，长片放后台运行，完成后再检查结果。有更完整的现成剪辑工程时优先复用它。
+
+## 容易踩的坑
+
+- **FFmpeg `adelay`+`amix` 拼人声**：会悄悄丢掉共同的前导静音，整条人声提前（实际遇到过整片提前 1.15 秒）。用 `place_audio.py`，成片用 `check_output.py --ref` 核对。
+- **按段各自做响度归一**：短句会被放大到削波。同一次录音的各段只做整体归一（`--lufs`）；只有来源不同的整段才单独归一。
+- **在混了音乐的音轨上跑 ASR**：词时间会漂。只对纯人声识别。
+- **词时间**：有定稿就用 `--aligner qwen`，不会把名字、数字、拼写（Shier Nee、ten、harmonised）识别成别的写法，字幕和计划里的词与稿子一致；它有时把句首词起点放晚到词中，`align_words.py` 会退回到真正的起音。Whisper：停顿后的第一个词常被提前 0.4–1 秒，偶尔出现零时长的词，重跑时同一词也可能差 0.3 秒以上。`align_words.py` 已修正前两项；时间线计划里的 `after` 要留出余量（比预期早约 1 秒）。
+- **真人片段的口型**：只看首尾对齐不够，逐句检查；原声有音乐底时，只能用对整段做的 DTW，不能靠能量找起止点。
+- **机器检查的循环论证**：用同一方法对齐又用同一方法验证，永远显示 0 误差。用独立方法（ASR 词起点、互相关）复核。
+- **文字卡和图表卡加推近**：逐步显示的卡片每张是不同的图，换图时运动进度归零，溶解时元素会跳一下，看起来像抖动。`zoom` 默认 0，只给照片设推近。
+- **“示意”数据图**：没有真实数据的曲线、柱状图，贴上 illustrative 或“示意”小字也不行，观众只记得图形。画面上的数字和图都要能追到具体的表或图；没有就改用研究设计图或流程图（见 visuals.md 的“数据图”）。
+- **版面问题在缩略图上看不出**：标签压线、刻度出界、文字被裁掉，用户在成片里一眼就看到。卡片用 `shoot_cards.py` 截图，它不报错再进时间线。
+- **交付前必须跑 `check_output.py`**：音视频时长差、整体偏移、真峰值过高都是看缩略图发现不了的。
 
 ## 工作方式
 
@@ -58,4 +91,4 @@ description: >-
 
 根据上下文判断用户说的是视频里的画面、PPT 文件还是两者；判断不了且会影响结果时才问。只改了 MP4 就不要说 PPT 也同步了。
 
-交付最新的完整成片；需要局部审阅时另附短预览，但预览不代替完整片。给导师或主办方的文件夹只放成品（PPTX、逐字稿、MP4、按需 SRT），不混入调试图、脚本和历史试听。报告实际改动，以及仍待用户确认的听感或画面问题。
+交付最新的完整成片；需要局部审阅时另附短预览，但预览不代替完整片。用户在手机或远程控制上看时，聊天里约 30 MB 以上的文件收不到，另压一个小预览发过去并说明完整片的位置。每一版放在新的版本目录里，不覆盖已交付的版本，方便对比（见 editing-and-delivery.md）。给导师或主办方的文件夹只放成品（PPTX、逐字稿、MP4、按需 SRT），不混入调试图、脚本和历史试听。报告实际改动，以及仍待用户确认的听感或画面问题。

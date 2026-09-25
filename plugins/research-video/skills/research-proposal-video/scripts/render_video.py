@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Render an image-led narrated MP4 from a validated scene timeline.
+"""Render a narrated MP4 from a validated scene timeline of images and video clips.
 
-Frames are resampled from the original image with float affine coordinates (no stepped
-jitter); consecutive scenes on one image share a motion clock; dissolves are blended before
-subtitles are drawn; music fades in and out and ducks under the voice; the output is
-H.264/yuv420p + AAC with faststart.
+Image frames are resampled from the original with float affine coordinates (no stepped
+jitter). An image scene is still unless it sets `zoom` (a slow push-in, e.g. 0.03 for photos;
+keep text and chart cards at 0); consecutive scenes on one image share a motion clock. A scene whose asset is a video
+(.mp4/.mov/.m4v/.webm/.mkv) plays that clip from its `clip_in` second, scaled to cover the frame
+(its own sound is not used: put it, or a synced replacement, in the voice track with
+place_audio.py / sync_to_footage.py). Dissolves are blended before subtitles are drawn, so
+presenter footage and slides share one subtitle style; music fades in and out and ducks under
+the voice; the output is H.264/yuv420p + AAC with faststart.
 
   python render_video.py work/timeline.json outputs/film.mp4 --voice work/voice.wav \
       --music work/music.wav --subtitles work/subtitles.srt
+  # real presenter intro (a video scene) + image body in one pass, one music bed, one subtitle style:
+  #   timeline scene 1: {"id": "intro", "asset": "../src/presenter.mp4", "clip_in": 0.9, "start": 0, "end": 8.2}
   # preview one changed passage with the real mix and fades:
   python render_video.py work/timeline.json work/preview.mp4 --voice work/voice.wav \
       --music work/music.wav --subtitles work/subtitles.srt --start 40 --end 55
@@ -67,6 +73,43 @@ def media_duration(path, ffmpeg):
         return float(out.stdout.strip())
     except (OSError, ValueError, subprocess.CalledProcessError):
         return None
+
+
+VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
+
+
+class ClipReader:
+    """Sequential frames of one video scene, scaled to cover width x height at the film's fps.
+    Opened lazily at the first requested time; requests must not go backwards."""
+
+    def __init__(self, path, clip_in, width, height, fps, ffmpeg):
+        self.args = (path, clip_in, width, height, fps, ffmpeg)
+        self.proc, self.pos, self.frame, self.size = None, None, None, width * height * 3
+
+    def get(self, local_t):
+        path, clip_in, width, height, fps, ffmpeg = self.args
+        k = round(local_t * fps)
+        if self.proc is None:
+            self.pos = k - 1
+            vf = (f"fps={fps},scale={width}:{height}:force_original_aspect_ratio=increase,"
+                  f"crop={width}:{height},setsar=1,format=rgb24")
+            self.proc = subprocess.Popen([ffmpeg, "-v", "error", "-ss", f"{clip_in + k / fps:.4f}", "-i", str(path),
+                                          "-an", "-vf", vf, "-f", "rawvideo", "-"],
+                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        while self.pos < k:
+            raw = self.proc.stdout.read(self.size)
+            if len(raw) < self.size:      # clip ran out: hold the last frame
+                break
+            self.frame, self.pos = raw, self.pos + 1
+        if self.frame is None:
+            raise SystemExit(f"could not read frames from {path} at {clip_in + local_t:.2f}s")
+        return self.frame
+
+    def close(self):
+        if self.proc:
+            self.proc.stdout.close()
+            self.proc.kill()
+            self.proc.wait()
 
 
 def subtitle_time(value):
@@ -132,7 +175,8 @@ def main():
         parser.error("video width/height must be positive even integers; fps must be positive")
     duration, scenes = float(data["duration"]), data["scenes"]
     if any(not s.get("asset") for s in scenes):
-        parser.error("render_video.py requires an image asset for every scene")
+        parser.error("render_video.py requires an image or video asset for every scene")
+    is_clip = [Path(s["asset"]).suffix.lower() in VIDEO_EXT for s in scenes]
     start = args.start
     end = duration if args.end is None else args.end
     if not 0 <= start < end <= duration + 1e-6:
@@ -147,9 +191,12 @@ def main():
     else:
         print("WARNING: no system font found; using Pillow's built-in Latin font. Pass --font.", file=sys.stderr)
         subtitle_font, title_font = ImageFont.load_default(sub_px), ImageFont.load_default(title_px)
-    images = {}
-    for scene in scenes:
+    images, readers = {}, {}
+    for i, scene in enumerate(scenes):
         path = base / scene["asset"]
+        if is_clip[i]:
+            readers[i] = ClipReader(path, float(scene.get("clip_in", 0)), width, height, fps, args.ffmpeg)
+            continue
         if path not in images:
             with Image.open(path) as raw:
                 rgba = raw.convert("RGBA")
@@ -159,6 +206,9 @@ def main():
     # Consecutive uses of one image share a single motion clock (a new title doesn't restart it).
     spans = []
     for i, scene in enumerate(scenes):
+        if is_clip[i]:
+            spans.append(None)
+            continue
         first, last = i, i
         while first and scenes[first - 1]["asset"] == scene["asset"]:
             first -= 1
@@ -172,12 +222,15 @@ def main():
 
     def scene_frame(i, t):
         scene = scenes[i]
+        if is_clip[i]:
+            frame = Image.frombytes("RGB", (width, height), readers[i].get(t - scene["start"]))
+            return draw_title(frame, scene)
         src = images[base / scene["asset"]]
         span_start, span_end, motion_scene = spans[i]
         p = max(0., min(1., (t - span_start) / (span_end - span_start)))
         ease = p * p * (3 - 2 * p)   # smoothstep ease-in-out
         motion = scenes[motion_scene]
-        zoom = float(motion.get("zoom", .035))
+        zoom = float(motion.get("zoom", 0))
         factor = max(width / src.width, height / src.height) * (1 + zoom * ease)
         visible_w, visible_h = width / factor, height / factor
         cx = src.width * float(motion.get("center_x", .5))
@@ -188,6 +241,9 @@ def main():
             (width, height), Image.Transform.AFFINE,
             (1 / factor, 0, cx - width / (2 * factor), 0, 1 / factor, cy - height / (2 * factor)),
             resample=Image.Resampling.BICUBIC, fillcolor="white")
+        return draw_title(frame, scene)
+
+    def draw_title(frame, scene):
         if scene.get("title"):
             draw = ImageDraw.Draw(frame)
             text = str(scene["title"])
@@ -231,6 +287,8 @@ def main():
             draw.text(((width - w) / 2 - left, y), line, font=subtitle_font, fill="white")
         return frame
 
+    fade_in, fade_out = float(video.get("fade_in", 0)), float(video.get("fade_out", 0))
+    black = Image.new("RGB", (width, height))
     # Audio is mixed over the whole film and then trimmed, so a preview hears the real fades and ducking.
     window = f"atrim=start={start}:end={end},asetpts=PTS-STARTPTS"
     voice = f"[1:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration={duration}"
@@ -248,7 +306,7 @@ def main():
             f"atrim=duration={duration},afade=t=in:d={args.music_fade_in},"
             f"afade=t=out:st={max(0., duration - args.music_fade_out)}:d={args.music_fade_out}[music];"
             "[music][key]sidechaincompress=threshold=0.018:ratio=6:attack=30:release=350[duck];"
-            f"[voice][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95,{window}[a]"
+            f"[voice][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89:level=false,{window}[a]"
         )
     else:
         filt = f"{voice},{window}[a]"
@@ -268,10 +326,17 @@ def main():
                 if i and transition and t < scene["start"] + transition:
                     previous = scene_frame(i - 1, t)
                     frame = Image.blend(previous, frame, (t - scene["start"]) / transition)
+                shade = min(1., t / fade_in if fade_in else 1., (duration - t) / fade_out if fade_out else 1.)
+                if shade < 1:
+                    frame = Image.blend(black, frame, max(0., shade))
                 proc.stdin.write(add_subtitle(frame, t).tobytes())
+                for j in [j for j in readers if scenes[j]["end"] <= t]:   # finished clips
+                    readers.pop(j).close()
         except BrokenPipeError:
             pass   # FFmpeg exited early; its log below says why
         finally:
+            for reader in readers.values():
+                reader.close()
             try:
                 proc.stdin.close()
             except BrokenPipeError:

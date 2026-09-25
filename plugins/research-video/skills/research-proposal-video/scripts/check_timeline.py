@@ -1,11 +1,30 @@
 #!/usr/bin/env python3
-"""Validate a scene timeline, declared dissolves, and optional word cues."""
+"""Validate a scene timeline, declared dissolves, video-clip scenes, and optional word cues.
+
+Word cues are compared with word start times plus the timeline's optional `word_offset`
+(seconds), for word files timed against an audio file that starts later in the film.
+"""
 import argparse
 import json
 import math
+import shutil
+import subprocess
 from pathlib import Path
 
 EPS = .002
+VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
+
+
+def clip_length(path):
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    try:
+        out = subprocess.run([ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+                              "format=duration", "-of", "csv=p=0", str(path)], capture_output=True, text=True, check=True)
+        return float(out.stdout.strip())
+    except (ValueError, subprocess.CalledProcessError):
+        return None
 
 
 def number(value):
@@ -59,6 +78,14 @@ def validate(data, base, words=None):
         errors.append("duration must be finite and positive.")
     if not isinstance(scenes, list) or not scenes:
         return errors + ["scenes must be a non-empty list."]
+    word_offset = data.get("word_offset", 0)
+    if not number(word_offset):
+        errors.append("word_offset must be a number.")
+        word_offset = 0
+    video = data.get("video", {})
+    for key in ("fade_in", "fade_out"):
+        if key in video and (not number(video[key]) or video[key] < 0):
+            errors.append(f"video.{key} must be a nonnegative number of seconds.")
     ids, previous, before_previous = set(), None, None
     for i, scene in enumerate(scenes):
         label = f"Scene {i + 1}"
@@ -97,7 +124,18 @@ def validate(data, base, words=None):
                 errors.append(f"{label}: asset must be a non-empty local path.")
             elif not (base / asset).is_file():
                 errors.append(f"{label}: asset not found: {asset}")
-        zoom = scene.get("zoom", .035)
+            elif Path(asset).suffix.lower() in VIDEO_EXT:
+                clip_in = scene.get("clip_in", 0)
+                if not number(clip_in) or clip_in < 0:
+                    errors.append(f"{label}: clip_in must be a nonnegative number of seconds.")
+                else:
+                    length = clip_length(base / asset)
+                    if length is not None and clip_in + (end - start) > length + .05:
+                        errors.append(f"{label}: clip needs {clip_in + end - start:.2f}s of {asset} "
+                                      f"but it lasts {length:.2f}s; the last frame would freeze.")
+        if "clip_in" in scene and not (isinstance(asset, str) and Path(asset).suffix.lower() in VIDEO_EXT):
+            errors.append(f"{label}: clip_in only applies to a video asset.")
+        zoom = scene.get("zoom", 0)
         if not number(zoom) or not 0 <= zoom <= .5:
             errors.append(f"{label}: zoom must be between 0 and 0.5.")
         for key in ("center_x", "center_y"):
@@ -119,8 +157,8 @@ def validate(data, base, words=None):
                     tolerance, offset = anchor.get("tolerance", .35), anchor.get("offset", 0)
                     if not number(tolerance) or tolerance < 0 or not number(offset):
                         errors.append(f"{label}: invalid speech_anchor tolerance/offset.")
-                    elif abs((start + transition / 2) - (word["start"] + offset)) > tolerance + EPS:
-                        errors.append(f"{label}: visual transition midpoint {start + transition / 2:.3f}s misses '{word['text']}' at {word['start'] + offset:.3f}s by more than {tolerance:.3f}s.")
+                    elif abs((start + transition / 2) - (word["start"] + word_offset + offset)) > tolerance + EPS:
+                        errors.append(f"{label}: visual transition midpoint {start + transition / 2:.3f}s misses '{word['text']}' at {word['start'] + word_offset + offset:.3f}s by more than {tolerance:.3f}s.")
         elif anchor is not None:
             errors.append(f"{label}: speech_anchor must be a number or word cue object.")
         before_previous, previous = previous, scene

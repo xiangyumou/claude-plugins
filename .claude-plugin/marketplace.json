@@ -23,8 +23,8 @@
     {
       "name": "research-video",
       "source": "./plugins/research-video",
-      "description": "Research video (科研视频): turn a proposal or PPT into a narrated film with voiceover, word-timed cuts, subtitles, smooth image motion and ducked music; tested rendering scripts included.",
-      "version": "1.0.0",
+      "description": "Research video (科研视频): turn a proposal or PPT into a narrated film with voiceover, word-timed cuts, subtitles, smooth image motion, ducked music and lip-synced presenter footage; tested scripts for alignment, audio placement, card layout checks, timelines, rendering and output checks.",
+      "version": "1.1.0",
       "category": "research",
       "keywords": [
         "video",

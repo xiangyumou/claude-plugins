@@ -16,15 +16,28 @@
     "voice_sample": null,
     "visual_direction": null
   },
+  "environment": {
+    "python_with_numpy_pillow_whisper": null,
+    "ffmpeg": "ffmpeg"
+  },
   "voice_generation": {
     "tts_model_or_service": null,
     "reference_audio": null,
     "generation_settings": null
   },
+  "presenter_footage": {
+    "source": null,
+    "clip_in": null,
+    "clip_out": null,
+    "audio": "original | synced_recording | none",
+    "replacement_recording": null,
+    "sync_report": null
+  },
   "speech_alignment": {
     "asr_model": null,
     "alignment_method": null
   },
+  "timeline_plan": "work/plan.json",
   "timeline": "work/timeline.json",
   "word_timestamps": "work/words.json",
   "subtitles": "work/subtitles.srt",
@@ -32,7 +45,9 @@
     "dry_voice": "work/voice.wav",
     "music": null,
     "music_source_and_license": null,
-    "final_mix": null
+    "final_mix": null,
+    "voice_track": "work/voice_full.wav",
+    "voice_track_pieces": []
   },
   "assets_manifest": "work/assets.json",
   "latest_output": null,
@@ -40,6 +55,7 @@
   "validation": {
     "timeline": null,
     "container_duration_size": null,
-    "watched_and_listened_segments": []
+    "watched_and_listened_segments": [],
+    "check_output": null
   }
 }
