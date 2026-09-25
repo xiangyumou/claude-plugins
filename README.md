@@ -8,14 +8,14 @@ In Claude Code:
 
 ```
 /plugin marketplace add xiangyumou/claude-plugins
-/plugin install scientific-figure-making@xiangyumou
+/plugin install research-figures@xiangyumou
 ```
 
 Or from a shell:
 
 ```bash
 claude plugin marketplace add xiangyumou/claude-plugins
-claude plugin install scientific-figure-making@xiangyumou
+claude plugin install research-figures@xiangyumou
 ```
 
 Update later with `/plugin marketplace update xiangyumou`.
@@ -24,7 +24,7 @@ Update later with `/plugin marketplace update xiangyumou`.
 
 | Plugin | What it does | License |
 |--------|--------------|---------|
-| [scientific-figure-making](plugins/scientific-figure-making) | Publication-ready matplotlib figures: venue-sized layouts, semantic palette, TrueType PDF export, automatic layout checks (`pubfig.py` helper + recipes) | CC BY-NC 4.0, adapted from [figures4papers](https://github.com/ChenLiu-1996/figures4papers) |
+| [research-figures](plugins/research-figures) | Publication-ready matplotlib figures: venue-sized layouts, semantic palette, TrueType PDF export, automatic layout checks (`pubfig.py` helper + recipes) | CC BY-NC 4.0, adapted from [figures4papers](https://github.com/ChenLiu-1996/figures4papers) |
 
 ## Using a skill outside Claude Code
 
@@ -33,7 +33,7 @@ Each skill is a plain folder under `plugins/<plugin>/skills/<skill>/` (`SKILL.md
 `~/.codex/skills/`) can use it through a symlink:
 
 ```bash
-ln -s ~/Projects/claude-plugins/plugins/scientific-figure-making/skills/scientific-figure-making ~/.codex/skills/scientific-figure-making
+ln -s ~/Projects/claude-plugins/plugins/research-figures/skills/scientific-figure-making ~/.codex/skills/scientific-figure-making
 ```
 
 ## Adding a plugin
