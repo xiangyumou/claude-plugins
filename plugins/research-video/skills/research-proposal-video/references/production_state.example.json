@@ -17,7 +17,7 @@
     "visual_direction": null
   },
   "environment": {
-    "python_with_numpy_pillow_whisper": null,
+    "python_env_with_script_deps": null,
     "ffmpeg": "ffmpeg"
   },
   "voice_generation": {

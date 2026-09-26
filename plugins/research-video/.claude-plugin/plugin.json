@@ -1,7 +1,7 @@
 {
   "name": "research-video",
   "description": "Research video toolkit (科研视频): turn a research proposal or PPT into a narrated film with voiceover, word-timed cuts, subtitles, smooth image motion and ducked background music, plus tested scripts for word timestamps, subtitle timing, sample-exact audio placement, presenter-footage lip sync, word-anchored timelines, HTML card screenshots with layout checks, image+video rendering and a final output/sync check.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": {
     "name": "Xiangyu",
     "url": "https://github.com/xiangyumou"

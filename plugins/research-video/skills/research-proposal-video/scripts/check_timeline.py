@@ -53,12 +53,30 @@ def load_words(path):
     return words
 
 
+def norm(text):
+    return "".join(c for c in text.casefold() if c.isalnum())
+
+
+def spoken_at(words, i, text):
+    """True when `text` is spoken starting at words[i], alone or across the next entries
+    (Chinese and Japanese are often timed per character: 超声 = 超 + 声)."""
+    target, said = norm(text), ""
+    if not target or not norm(words[i]["text"]):     # a match starts on a spoken word, not on punctuation
+        return False
+    for w in words[i:]:
+        said += norm(w["text"])
+        if said == target:
+            return True
+        if not target.startswith(said):
+            return False
+    return False
+
+
 def resolve_word(anchor, words):
     if "word_id" in anchor:
         hits = [w for w in words if w.get("id") == anchor["word_id"]]
     elif isinstance(anchor.get("word"), str) and anchor["word"].strip():
-        clean = lambda s: s.strip().casefold().strip(".,;:!?\"'”")
-        hits = [w for w in words if clean(w["text"]) == clean(anchor["word"])]
+        hits = [w for i, w in enumerate(words) if spoken_at(words, i, anchor["word"])]
     else:
         return None, "speech_anchor needs word_id or word"
     occurrence = anchor.get("occurrence", 1)

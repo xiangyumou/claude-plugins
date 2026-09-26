@@ -114,7 +114,7 @@ def place(pieces, duration, out_path, ffmpeg="ffmpeg", quiet=False, mix_lufs=Non
                             "-c:a", "pcm_f32le", tmp.name], input=buf.tobytes(), check=True)
             measured = measure_lufs([], tmp.name, ffmpeg)
         if measured is not None and measured > -70:
-            post = [f"volume={mix_lufs - measured:.2f}dB", "alimiter=limit=0.89:level=false"]
+            post = [f"volume={mix_lufs - measured:.2f}dB", "alimiter=limit=0.89:level=false:latency=1"]
             if not quiet:
                 print(f"mix {measured} LUFS -> {mix_lufs} LUFS ({mix_lufs - measured:+.1f} dB, -1 dBFS limiter)")
     else:

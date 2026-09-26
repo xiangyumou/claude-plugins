@@ -71,19 +71,25 @@ def lag_ms(ref, film, max_lag):
 
 
 def sync_check(film, ref_path, offset, ffmpeg, points=6, window=4.0, max_lag=2.5):
+    """Up to `points` windows spread over the part of ref that lies inside the film (shorter windows
+    in a short film); silent windows are skipped. The film is padded with silence, so windows at
+    its very start and end are compared too."""
     ref = pcm(ref_path, ffmpeg)
-    span = len(ref) / SR - window
+    lo, hi = max(0., -offset), min(len(ref) / SR, len(film) / SR - offset)
+    window = min(window, hi - lo)
+    if window < 1.0:
+        return []
+    pad = np.zeros(round(max_lag * SR), dtype=film.dtype)
+    film = np.concatenate([pad, film, pad])
     results = []
-    for t in np.linspace(0.5, max(0.5, span - 0.5), points):
+    for t in np.linspace(lo, hi - window, points):
         a = round(t * SR)
         r = ref[a:a + round(window * SR)]
-        if len(r) < window * SR or np.sqrt((r ** 2).mean()) < 0.01:   # skip silent windows
+        if np.sqrt((r ** 2).mean()) < 0.01:   # skip silent windows
             continue
-        b = round((t + offset - max_lag) * SR)
-        f = film[max(0, b):b + len(r) + round(2 * max_lag * SR)]
-        if b < 0 or len(f) < len(r) + 2 * max_lag * SR:
-            continue
-        lag, peak = lag_ms(r, f, round(max_lag * SR))
+        b = round((t + offset) * SR)           # = film time - max_lag, in the padded film
+        f = film[b:b + len(r) + 2 * len(pad)]
+        lag, peak = lag_ms(r, f, len(pad))
         results.append({"ref_time": round(float(t), 1), "film_time": round(float(t + offset), 1),
                         "offset_ms": lag, "match": peak})
     return results

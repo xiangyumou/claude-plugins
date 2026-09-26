@@ -37,19 +37,15 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-from check_timeline import load_words, validate  # noqa: E402
+from check_timeline import load_words, norm, spoken_at, validate  # noqa: E402
 
 PLAN_KEYS = {"word", "after", "occurrence", "at", "transition", "anchor_tolerance"}
 
 
-def norm(text):
-    return "".join(c for c in text.casefold() if c.isalnum())
-
-
 def find_word(words, text, after, offset, occurrence=1):
     found = 0
-    for w in words:
-        if w["start"] + offset >= after - 1e-6 and norm(w["text"]) == norm(text):
+    for i, w in enumerate(words):
+        if w["start"] + offset >= after - 1e-6 and spoken_at(words, i, text):
             found += 1
             if found == occurrence:
                 return w
@@ -117,8 +113,8 @@ def main():
             w = cuts[i][2]
             if w is not None:
                 scene["speech_anchor"] = ({"word_id": w["id"], "tolerance": tolerance} if "id" in w else
-                                          {"word": w["text"], "occurrence": 1 + sum(
-                                              norm(x["text"]) == norm(w["text"]) for x in words
+                                          {"word": spec["word"], "occurrence": 1 + sum(
+                                              spoken_at(words, k, spec["word"]) for k, x in enumerate(words)
                                               if x["start"] < w["start"]), "tolerance": tolerance})
         scenes.append(scene)
         cue = f"'{cuts[i][2]['text']}'" if i and cuts[i][2] else ("fixed" if i else "start")

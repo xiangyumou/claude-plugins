@@ -27,7 +27,7 @@ Update later with `/plugin marketplace update xiangyumou`.
 | Plugin | What it does | License |
 |--------|--------------|---------|
 | [research-figures](plugins/research-figures) | 科研画图. Skill `scientific-figure-making`: publication-ready matplotlib figures (venue-sized layouts, semantic palette, TrueType PDF export, automatic layout checks via `pubfig.py`) plus a [gallery](plugins/research-figures/skills/scientific-figure-making/gallery/README.md) of 25 reviewed figure scripts from published papers | CC BY-NC 4.0, adapted from [figures4papers](https://github.com/ChenLiu-1996/figures4papers) |
-| [research-video](plugins/research-video) | 科研视频. Skill `research-proposal-video`: turn a research proposal or PPT into a narrated film (voice auditions, word-timed cuts, subtitles from the approved script, smooth image motion, ducked music) or revise part of an existing one. Scripts: `align_words.py`, `make_subtitles.py`, `check_timeline.py`, `render_video.py` (needs Pillow and FFmpeg) | MIT |
+| [research-video](plugins/research-video) | 科研视频. Skill `research-proposal-video`: turn a research proposal or PPT into a narrated film (voice auditions, word-timed cuts, subtitles from the approved script, smooth image motion, ducked music) or revise part of an existing one. Scripts: `align_words.py`, `make_subtitles.py`, `place_audio.py`, `sync_to_footage.py`, `build_timeline.py`, `check_timeline.py`, `render_video.py`, `shoot_cards.py`, `check_output.py` (need Python 3, NumPy, Pillow and FFmpeg; Playwright for card screenshots; faster-whisper or qwen-asr for word timing) | MIT |
 
 ## Adding a skill
 

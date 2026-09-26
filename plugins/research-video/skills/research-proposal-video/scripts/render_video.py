@@ -170,7 +170,7 @@ def main():
     if errors:
         parser.error("Invalid timeline: " + "; ".join(errors))
     video = data.get("video", {})
-    width, height, fps = int(video.get("width", 1280)), int(video.get("height", 720)), int(video.get("fps", 24))
+    width, height, fps = int(video.get("width", 1920)), int(video.get("height", 1080)), int(video.get("fps", 30))
     if min(width, height, fps) <= 0 or width % 2 or height % 2:
         parser.error("video width/height must be positive even integers; fps must be positive")
     duration, scenes = float(data["duration"]), data["scenes"]
@@ -302,6 +302,10 @@ def main():
     black = Image.new("RGB", (width, height))
     # Audio is mixed over the whole film and then trimmed, so a preview hears the real fades and ducking.
     window = f"atrim=start={start}:end={end},asetpts=PTS-STARTPTS"
+    voice_len = media_duration(args.voice, args.ffmpeg)
+    if voice_len is not None and voice_len > duration + .05:
+        print(f"WARNING: the voice ({voice_len:.2f}s) is longer than the timeline ({duration:.2f}s); "
+              f"its last {voice_len - duration:.2f}s are cut. Lengthen the timeline or trim the voice.", file=sys.stderr)
     voice = f"[1:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration={duration}"
     cmd = [args.ffmpeg, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
            "-s", f"{width}x{height}", "-r", str(fps), "-i", "-", "-i", str(args.voice)]
@@ -317,7 +321,7 @@ def main():
             f"atrim=duration={duration},afade=t=in:d={args.music_fade_in},"
             f"afade=t=out:st={max(0., duration - args.music_fade_out)}:d={args.music_fade_out}[music];"
             "[music][key]sidechaincompress=threshold=0.018:ratio=6:attack=30:release=350[duck];"
-            f"[voice][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89:level=false,{window}[a]"
+            f"[voice][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.89:level=false:latency=1,{window}[a]"
         )
     else:
         filt = f"{voice},{window}[a]"

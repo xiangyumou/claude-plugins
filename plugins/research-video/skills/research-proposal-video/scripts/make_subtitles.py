@@ -10,7 +10,9 @@ Subtitles are written for reading, not for the voice. `{shown|spoken}` shows one
 times it by the other, e.g. `It affects {10–15%|ten to fifteen percent} of pregnancies`. With
 --lines every line of the text file is one cue, for a hand-edited subtitle file. Each cue ends
 up to --linger s after its last word (never into the next cue); cues read faster than --max-cps
-characters per second are reported.
+characters per second are reported (default 20 for Latin text, 9 for CJK). --offset shifts every
+word time, for a words.json timed on audio that starts later in the film (the timeline's
+word_offset); the default flow times the whole voice track, so it stays 0.
 
   python make_subtitles.py work/script.txt work/words.json work/subtitles.srt
   python make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
@@ -85,7 +87,8 @@ def main():
     parser.add_argument("--min-duration", type=float, default=1.0)
     parser.add_argument("--gap", type=float, default=.08, help="Seconds between consecutive cues")
     parser.add_argument("--linger", type=float, default=.4, help="Max seconds a cue stays after its last word")
-    parser.add_argument("--max-cps", type=float, default=20, help="Warn above this reading speed (chars/s)")
+    parser.add_argument("--max-cps", type=float, help="Warn above this reading speed; default 20 (Latin) or 9 (CJK) chars/s")
+    parser.add_argument("--offset", type=float, default=0.0, help="Seconds added to every word time")
     parser.add_argument("--lines", action="store_true", help="Each non-empty line of the text is one cue")
     args = parser.parse_args()
     script = args.script.read_text(encoding="utf-8")
@@ -93,7 +96,10 @@ def main():
     words = data["words"] if isinstance(data, dict) else data
     if not words:
         parser.error("words.json has no words")
-    max_chars = args.max_chars or (20 if re.search(f"[{CJK}]", script) else 42)
+    cjk = bool(re.search(f"[{CJK}]", script))
+    max_chars = args.max_chars or (20 if cjk else 42)
+    max_cps = args.max_cps or (9 if cjk else 20)
+    words = [dict(w, start=w["start"] + args.offset, end=w["end"] + args.offset) for w in words]
 
     texts = []
     for paragraph in (script.split("\n") if not args.lines else []):
@@ -150,7 +156,7 @@ def main():
 
     for c in cues:
         cps = len(c["text"]) / max(.01, c["end"] - c["start"])
-        if cps > args.max_cps:
+        if cps > max_cps:
             print(f"WARNING: {srt_time(c['start'])} reads at {cps:.0f} chars/s: {c['text']!r}; "
                   "merge with a neighbour, shorten the text or give it more time.", file=sys.stderr)
 
