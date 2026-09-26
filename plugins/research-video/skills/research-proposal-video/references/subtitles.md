@@ -18,7 +18,7 @@
 
     python3 $S/make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
 
-时间仍按口播的词取，显示的是左边的写法。核对：去掉花括号的显示部分、保留口播部分后应与认可稿逐词一致；对不上的条目和读速警告都要逐条处理。交付的 SRT 用这一版。
+时间仍按口播的词取，显示的是左边的写法；`align_words.py --script` 也认这种写法，按口播部分对齐。核对：去掉花括号的显示部分、保留口播部分后应与认可稿逐词一致；对不上的条目和读速警告都要逐条处理。交付的 SRT 用这一版。
 
 `words.json` 是在后来才进片的音轨上取的（时间线用了 `word_offset`）时，加 `--offset` 同样的秒数，否则字幕整体提前。默认流程对整条人声轨取词，偏移为 0。
 

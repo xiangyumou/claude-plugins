@@ -36,20 +36,21 @@ description: >-
 
 | 脚本 | 作用 |
 |---|---|
-| `align_words.py` | 对**纯人声**取带 id 的词级时间戳：有定稿、给了语言且装了 qwen-asr 时自动用 Qwen3-ForcedAligner 把定稿对到音频上（文字与稿子一致、结果可复现），否则用 faster-whisper 识别；把落在静音里的词起点推到真正出声处；`--script` 逐处列出与认可稿不一致的地方 |
+| `align_words.py` | 对**纯人声**取带 id 的词级时间戳：有定稿、给了语言且装了 qwen-asr 时自动用 Qwen3-ForcedAligner 把定稿对到音频上（文字与稿子一致、结果可复现），否则用 faster-whisper 识别；音频超过 5 分钟时改用 Whisper（或分段、`--offset` 对齐）；`--script` 里的 `{显示\|口播}` 按口播部分对齐；把落在静音里的词起点推到真正出声处；Whisper 时逐处列出与认可稿不一致的地方 |
 | `make_subtitles.py` | 用认可稿的文字、`words.json` 的时间生成 SRT；自动按句、按逗号切条，或 `--lines` 按手工分好的字幕文件逐行成条；`{显示\|口播}` 让字幕写数字、按口播的词取时间；报告读速过快的条目（默认英文 20、中文 9 字/秒）；`--offset` 平移词时间；支持中英文 |
-| `place_audio.py` | 把多段音频按采样点精确放到一条时间轴上（裁切、变速、增益、整体响度，限幅器已补偿延迟），代替 adelay+amix |
+| `place_audio.py` | 把多段音频按采样点精确放到一条时间轴上（裁切、变速、增益、整体响度，限幅器已补偿延迟），长度默认到最后一段结束，代替 adelay+amix |
 | `sync_to_footage.py` | 真人画面的原声不能用、另有同内容的干净录音时，按短句自动对口型（DTW + 分段变速），`--asr-check` 独立验证 |
 | `build_timeline.py` | 用“哪个镜头从哪个词开始”的简短计划生成 `timeline.json`，转场中点自动对准词，写出前先检查；`--words` 让同一份计划套到另一条配音上 |
 | `check_timeline.py` | 检查时间线：镜头衔接与溶解重叠、素材和视频片段长度、转场中点是否对准关键词 |
-| `render_video.py` | 图片和真人视频镜头一次渲染：平滑推近、溶解、淡入、逐帧字幕、配乐淡入淡出和人声闪避，H.264/AAC MP4；`--start/--end` 渲染局部预览；人声比时间线长时警告 |
+| `render_video.py` | 图片和真人视频镜头一次渲染：平滑推近、溶解、淡入、逐帧字幕、配乐淡入淡出和人声闪避，H.264/AAC MP4；`--start/--end` 渲染局部预览；时间线结束后人声仍有声音时警告（尾部静音不算） |
+| `pauses.py` | 按认可稿的标点把停顿分成句末、逗号、无标点三类，报告各类长度和去掉停顿后的语速；给输出文件时把句间停顿设到指定长度、另两类封顶（剪中间加交叉淡化，加长补静音），`--words-out` 同步平移词时间 |
 | `shoot_cards.py` | 把 HTML/CSS 卡片截成 PNG（默认 1920×1080 布局、1.25 倍像素），同时检查版面：文字超出卡片或画面、文字互相重叠、线条穿过文字，有问题返回非零 |
 | `check_output.py` | 交付前检查成片：音视频时长是否一致、时长/大小限制、编码、响度与真峰值；`--ref` 用互相关核对人声在片中的位置（抓整体偏移） |
 
 默认流程（`$S` 如上；细节见 [editing-and-delivery.md](references/editing-and-delivery.md)）：
 
     python3 $S/shoot_cards.py work/cards/cards.html work/cards/out          # 截图并检查版面
-    python3 $S/place_audio.py work/voice_full.wav --duration 111 --lufs -16 \
+    python3 $S/place_audio.py work/voice_full.wav --lufs -16 \
         work/intro_voice.wav@0 work/voice.wav@7.8                           # 一条人声轨，整体响度
     python3 $S/align_words.py work/voice_full.wav work/words.json --language en --script work/script.txt
     python3 $S/make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
@@ -66,14 +67,14 @@ description: >-
 
 ## 容易踩的坑
 
-- **FFmpeg `adelay`+`amix` 拼人声**：会悄悄丢掉共同的前导静音，整条人声提前（实际遇到过整片提前 1.15 秒）。用 `place_audio.py`，成片用 `check_output.py --ref` 核对。
+- **FFmpeg `adelay`+`amix` 拼人声**：会丢掉共同的前导静音，整条人声提前。用 `place_audio.py`，成片用 `check_output.py --ref` 核对。
 - **按段各自做响度归一**：短句会被放大到削波。同一次录音的各段只做整体归一（`--lufs -16`）；只有来源不同的整段才单独归一。不做整体归一，成片响度就没人管。
 - **在混了音乐的音轨上跑 ASR**：词时间会漂。只对纯人声识别。
-- **词时间用 Whisper 识别**：名字、数字、拼写会被写成别的样子，停顿后的词起点会提前，重跑结果也会变。有定稿就用 `--aligner qwen`（细节见 editing-and-delivery.md 的“口播”一节）。
+- **词时间用 Whisper 识别**：名字、数字会被写错，停顿后的词起点提前，重跑结果会变。有定稿时装好 qwen-asr、给 `--script` 和 `--language`，看 `align_words.py` 打印的是否是 qwen；超过 5 分钟的人声分段对齐（见 editing-and-delivery.md 的“关于词时间”）。
 - **真人片段的口型**：只看首尾对齐不够，逐句检查；原声有音乐底时，只能用对整段做的 DTW，不能靠能量找起止点。
 - **机器检查的循环论证**：用同一方法对齐又用同一方法验证，永远显示 0 误差。用独立方法（ASR 词起点、互相关）复核。
-- **文字卡和图表卡加推近**：逐步显示的卡片溶解时会跳，看起来像抖动。`zoom` 保持默认 0，只给照片设推近（见 editing-and-delivery.md 的“平滑运动”）。
-- **“示意”数据图**：没有真实数据的曲线、柱状图，贴上 illustrative 或“示意”小字也不行，观众只记得图形。画面上的数字和图都要能追到具体的表或图；没有就改用研究设计图或流程图（见 visuals.md 的“数据图”）。
+- **文字卡和图表卡加推近**：溶解时看起来像抖动。`zoom` 保持 0，只给照片推近（见 editing-and-delivery.md 的“平滑运动”）。
+- **“示意”数据图**：没有真实数据的图，贴上“示意”小字也不行。画面上的数字和图都要能追到来源（见 visuals.md 的“数据图”）。
 - **版面问题在缩略图上看不出**：标签压线、刻度出界、文字被裁掉，用户在成片里一眼就看到。卡片用 `shoot_cards.py` 截图，它不报错再进时间线。
 - **字幕照搬配音稿**：配音稿里的 ten to fifteen percent、被切断的 Department of | Artificial Intelligence，在字幕上都很难读。字幕单独写一版：数字用阿拉伯数字，每条是完整意群（见 [subtitles.md](references/subtitles.md)）。
 - **计划里只写 `after` 秒数**：换一条配音就全部错位。镜头用 `word` + `occurrence` 锚定，换声音时用 `--words` 重新生成即可。
@@ -95,4 +96,4 @@ description: >-
 
 根据上下文判断用户说的是视频里的画面、PPT 文件还是两者；判断不了且会影响结果时才问。只改了 MP4 就不要说 PPT 也同步了。
 
-交付最新的完整成片；需要局部审阅时另附短预览，但预览不代替完整片。用户在手机上看时大文件可能收不到，另压小预览（见 editing-and-delivery.md）。每一版放在新的版本目录里，不覆盖已交付的版本，方便对比；要在几个声音之间选时做只差配音的 A/B 成片，选定后才把那一版和它的 SRT 放进交付目录，旧成品归档（见 editing-and-delivery.md）。给导师或主办方的文件夹只放成品（PPTX、逐字稿、MP4、按需 SRT），不混入调试图、脚本和历史试听。报告实际改动，以及仍待用户确认的听感或画面问题。
+交付最新的完整成片；需要局部审阅时另附短预览，但预览不代替完整片。某些客户端对聊天附件大小有上限，大文件另压小预览（见 editing-and-delivery.md）。每一版放在新的版本目录里，不覆盖已交付的版本，方便对比；要在几个声音之间选时做只差配音的 A/B 成片，选定后才把那一版和它的 SRT 放进交付目录，旧成品归档（见 editing-and-delivery.md）。给导师或主办方的文件夹只放成品（PPTX、逐字稿、MP4、按需 SRT），不混入调试图、脚本和历史试听。报告实际改动，以及仍待用户确认的听感或画面问题。

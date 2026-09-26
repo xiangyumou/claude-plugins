@@ -6,8 +6,8 @@ silently drop the shared leading silence, shifting everything early (a 1.15 s li
 practice) while the file still "looks" fine. Each piece is decoded by FFmpeg, optionally trimmed,
 time-stretched and loudness-matched, then summed into the buffer at round(start * rate).
 
-  python place_audio.py work/voice_full.wav --duration 111 \
-      work/intro_voice.wav@0 work/voice.wav@7.8
+  python place_audio.py work/voice_full.wav work/intro_voice.wav@0 work/voice.wav@7.8
+  # the track ends with the last piece unless --duration fixes its length
   # a slice of a recording, sped up 5 %, levelled to the narration:
   python place_audio.py out.wav --duration 9 "note.opus@1.2:in=0.05,out=1.1,tempo=1.05" --lufs -16
   # two different sources, each levelled to the narration before mixing:
@@ -87,16 +87,23 @@ def decode(piece, ffmpeg="ffmpeg"):
 
 
 def place(pieces, duration, out_path, ffmpeg="ffmpeg", quiet=False, mix_lufs=None):
-    """Mix pieces into a buffer of `duration` seconds; returns per-piece placement info."""
+    """Mix pieces into a buffer of `duration` seconds (None: up to the end of the last piece);
+    returns per-piece placement info."""
+    decoded = [decode(p, ffmpeg) for p in pieces]
+    if duration is None:
+        duration = max(round(p["start"] * RATE) + len(x) for p, x in zip(pieces, decoded)) / RATE
     buf = np.zeros((round(duration * RATE), 2), dtype=np.float32)
     report = []
-    for p in pieces:
-        x = decode(p, ffmpeg)
+    for p, x in zip(pieces, decoded):
         k = round(p["start"] * RATE)
         if k >= len(buf):
             raise ValueError(f"{p['path']} starts after the end ({p['start']} s >= {duration} s)")
         if k + len(x) > len(buf):
-            print(f"WARNING: {p['path']} is cut at the end by {(k + len(x) - len(buf)) / RATE:.2f} s", file=sys.stderr)
+            cut = x[len(buf) - k:]
+            loud = np.nonzero(np.abs(cut).max(axis=1) > 10 ** (-50 / 20))[0]   # only report audible sound
+            if len(loud):
+                print(f"WARNING: {p['path']} is cut at the end: {(loud[-1] + 1) / RATE:.2f} s of sound past "
+                      f"{duration:.2f} s", file=sys.stderr)
             x = x[:len(buf) - k]
         buf[k:k + len(x)] += x
         info = {"path": str(p["path"]), "start": p["start"], "end": round(p["start"] + len(x) / RATE, 3)}
@@ -132,7 +139,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("output", type=Path)
     parser.add_argument("pieces", nargs="+", help="PATH@START[:in=,out=,tempo=,gain=,fade=]")
-    parser.add_argument("--duration", type=float, required=True, help="Output length in seconds (exact)")
+    parser.add_argument("--duration", type=float, help="Output length in seconds (exact); default: end of the last piece")
     parser.add_argument("--lufs", type=float, help="Level the finished mix to this integrated loudness")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
@@ -143,8 +150,9 @@ def main():
     for p in pieces:
         if not p["path"].is_file():
             parser.error(f"not found: {p['path']}")
-    place(pieces, args.duration, args.output, args.ffmpeg, mix_lufs=args.lufs)
-    print(f"{args.output}  {args.duration:.3f} s")
+    report = place(pieces, args.duration, args.output, args.ffmpeg, mix_lufs=args.lufs)
+    length = args.duration if args.duration is not None else max(r["end"] for r in report)
+    print(f"{args.output}  {length:.3f} s")
 
 
 if __name__ == "__main__":

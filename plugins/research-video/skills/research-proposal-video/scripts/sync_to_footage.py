@@ -16,7 +16,9 @@ Whisper word start times in the footage and in the result, word by word.
   python sync_to_footage.py presenter.mp4 note.opus out.wav --clip-in 0.9 --clip-out 9.1 --splits 1.1,2.6,5.36
 
 The output WAV lasts exactly clip_out - clip_in and starts at the clip's first frame, so it lines
-up with a video cut made with the same in/out points. Mute the footage's own audio in the edit.
+up with a video cut made with the same in/out points (the recording's trailing silence is
+dropped; speech running past the out point is reported). DTW needs memory for speech x clip
+length, so sync takes of more than about a minute in parts. Mute the footage's own audio in the edit.
 A JSON plan (pieces, tempos, residual offsets) is written next to the output; the pieces can be
 re-placed by hand with place_audio.py. Needs only NumPy and FFmpeg.
 """
@@ -31,6 +33,7 @@ sys.dont_write_bytecode = True
 from place_audio import place  # noqa: E402
 
 SR, HOP, WIN = 16000, 160, 400   # 10 ms hop, 25 ms window
+MAX_CELLS = 6e7                  # DTW matrix cells (two float32 matrices, ~0.5 GB): about 75 s x 75 s
 
 
 def load(path, start=0.0, end=None, ffmpeg="ffmpeg"):
@@ -83,9 +86,12 @@ def dtw_path(a, b):
     horizontal or vertical one), so the stretch of `b` with no match in `a` - room tone, a music
     bed, a breath before the first word - is absorbed by cheap horizontal runs instead of bending
     the whole path. Row-vectorised; returns (i, j) index pairs from (0, 0) to the ends."""
-    cost = 1 - a @ b.T
-    n, m = cost.shape
-    acc = np.empty((n, m))
+    n, m = len(a), len(b)
+    if n * m > MAX_CELLS:
+        raise SystemExit(f"{n / 100:.0f} s of speech against {m / 100:.0f} s of footage is too long to match in one "
+                         "go; sync it in parts of about a minute (--clip-in/--clip-out with --rec-in/--rec-out)")
+    cost = 1 - (a @ b.T).astype(np.float32)
+    acc = np.empty((n, m), dtype=np.float32)
     acc[0] = np.cumsum(cost[0])
     for i in range(1, n):
         prev = acc[i - 1]
@@ -265,10 +271,13 @@ def main():
         fits = plan_phrases(rec_db, args.threshold, to_foot, tempo_range, length, args.coarse_pause,
                             args.min_pause, args.min_phrase, args.max_drift)
     pieces, plan, prev_end = [], [], 0.0
-    for f in fits:
+    for k, f in enumerate(fits):
         a, start = f["a"], f["start"]
         if start < 0:
             a, start = a - start * f["tempo"], 0.0     # trim leading silence rather than start before the clip
+        if k == len(fits) - 1:
+            # The last phrase ends at the recording's end: keep 0.3 s after its speech, and no more than the clip holds.
+            f["b"] = max(f["off"], min(f["b"], f["off"] + .3, a + (clip_len - start) * f["tempo"]))
         if start < prev_end - 0.05:
             print(f"WARNING: phrase at {a + args.rec_in:.2f}s overlaps the previous one by "
                   f"{prev_end - start:.2f}s; consider --splits", file=sys.stderr)

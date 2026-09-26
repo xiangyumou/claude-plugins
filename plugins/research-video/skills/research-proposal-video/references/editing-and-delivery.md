@@ -6,7 +6,7 @@
 
 | 工作 | 默认 | 换用条件 |
 |---|---|---|
-| 词级时间戳 | `align_words.py --aligner qwen`（Qwen3-ForcedAligner-0.6B，按定稿强制对齐） | 没有定稿、或音频超过 5 分钟时用默认的 faster-whisper；两者都要人工抽查 |
+| 词级时间戳 | `align_words.py`：有定稿、`--language` 且装了 qwen-asr 时自动用 Qwen3-ForcedAligner-0.6B 按定稿强制对齐 | 没有定稿时自动用 faster-whisper。Qwen 一次最多对齐 5 分钟：更长的人声在停顿处切段，各段用 `--offset` 对齐后合并（不切段时自动改用 Whisper）。两者都要人工抽查 |
 | 字幕 | `make_subtitles.py --lines`：手工分条的字幕稿（`{显示\|口播}`）+ 词时间，见 [subtitles.md](subtitles.md) | 已有人工校对的字幕 |
 | 拼人声轨 | `place_audio.py`（采样点精确） | 不用 adelay+amix |
 | 真人画面换成干净录音 | `sync_to_footage.py`（DTW 分句对口型），见 [presenter-footage.md](presenter-footage.md) | 自动结果仍不自然时，按 `.sync.json` 手调各段再用 `place_audio.py` |
@@ -25,12 +25,12 @@
 
 先定稿和干声，再按下面的顺序做（`$S` 是本 skill 的 `scripts/` 目录的绝对路径）：
 
-- 用 `place_audio.py` 拼出从 0 秒开始、与成片等长的整条人声轨（开场真人段 + 旁白），`--lufs -16` 做整体响度。渲染器不再归一响度，`check_output.py` 按 −16 LUFS 检查。
+- 用 `place_audio.py` 拼出从 0 秒开始的整条人声轨（开场真人段 + 旁白；长度默认到最后一段结束，不必与成片等长），`--lufs -16` 做整体响度。渲染器不再归一响度，`check_output.py` 按 −16 LUFS 检查。
 - 在这条纯人声轨上生成 `words.json`，不对混了音乐的音轨做。单独识别某一段时，用 `align_words.py --offset` 传入该段在全片中的起点，词时间就在全片时间上，不需要 `word_offset`。
 - ASR 只建议时间，不改认可稿的文字。人名、机构名、一词对多词和语音起止点要对照原声核实。
-- 改了语速、静音或重新合成后必须重新取时间戳；只做保持时长的音量/音高处理可以沿用，但要检查边界。转换采样率不能改变时长，不要把 24 kHz 的文件当 48 kHz 解释。
+- 调停顿用 `pauses.py`（见 [voice.md](voice.md)）。改了语速、静音或重新合成后必须重新取时间戳；只做保持时长的音量/音高处理可以沿用，但要检查边界。转换采样率不能改变时长，不要把 24 kHz 的文件当 48 kHz 解释。
 
-    python3 $S/place_audio.py work/voice_full.wav --duration 111 --lufs -16 \
+    python3 $S/place_audio.py work/voice_full.wav --lufs -16 \
         work/intro_voice.wav@0 work/voice.wav@7.8
     python3 $S/align_words.py work/voice_full.wav work/words.json --language en --script work/script.txt
     python3 $S/make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
@@ -41,7 +41,8 @@
 
 关于词时间：
 
-- `align_words.py` 默认在有 `--script`、`--language` 且装了 qwen-asr 时用 Qwen 强制对齐，否则用 Whisper，并打印所选的方式。
+- `align_words.py` 默认在有 `--script`、`--language`、装了 qwen-asr 且音频不超过 5 分钟时用 Qwen 强制对齐，否则用 Whisper，并打印所选的方式。
+- `--script` 给认可稿，和 `make_subtitles.py` 用同一份即可：`{显示|口播}` 按口播部分对齐。稿子要写声音实际读出的词，不要给为了 TTS 读音改拼写的合成文本（写 Qwen，不写 Chwen）。
 - Qwen 对齐的词和稿子逐字一致（计划里的 `word` 按稿子拼写，harmonised 而非 harmonized），同一音频两次结果完全相同。它偶尔把句首词起点放晚到词中（或把一个词的时间给下一个词），脚本会在前面至少 120 ms 的静音处找回起音。
 - Whisper 常把停顿后第一个词提前 0.4–1 秒（脚本会推到真正出声处），偶尔给零时长的词（已修正），重跑时同一词可能差 0.3 秒以上，所以用 `after` 的计划要留余量。`--script` 会列出识别与认可稿不一致的每一处（例如 script 'growth' -> heard 'gross'），逐条判断是识别错还是真的读错。
 - 中文、日文常按字给时间，计划里的“超声”这类词会跨几个字去匹配；英文单词只和单个词匹配（into 不会命中 in to），带空格或连字符的短语可以跨词。
@@ -147,4 +148,4 @@
 
 用户选定一版后才更新交付目录：原来的成品挪进 `work/` 下的归档目录（例如 `work/outputs_archive_v2/`），不删除；把选中的成片和它自己的 SRT 按交付文件名复制进 `outputs/`；核对逐字稿、录音稿是否仍与这一版的口播一致；对 `outputs/` 里的文件再跑一遍 `check_output.py`；状态记录写明选了哪版、谁选的、来源路径和检查结果。没选中的版本留在 `work/`。
 
-用户在手机上或通过远程控制看进度时，聊天里发送的文件大约超过 30 MB 就收不到。成片超过这个大小时，另做一个预览发过去（例如 `ffmpeg -i film.mp4 -c:v libx264 -preset slow -crf 26 -c:a aac -b:a 160k -movflags +faststart preview.mp4`），说明它只是压缩预览，完整片在哪个路径。外发目录只放用户需要的完整成片，以及用户要的 PPTX、逐字稿或 SRT；短预览另附，不代替完整片。
+某些客户端（例如手机、远程控制）对聊天附件的大小有上限（遇到过约 30 MB）。成片超过这个大小时，另做一个预览发过去（例如 `ffmpeg -i film.mp4 -c:v libx264 -preset slow -crf 26 -c:a aac -b:a 160k -movflags +faststart preview.mp4`），说明它只是压缩预览，完整片在哪个路径。外发目录只放用户需要的完整成片，以及用户要的 PPTX、逐字稿或 SRT；短预览另附，不代替完整片。

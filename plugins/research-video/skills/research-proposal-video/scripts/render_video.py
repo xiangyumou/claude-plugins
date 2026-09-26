@@ -8,7 +8,8 @@ keep text and chart cards at 0); consecutive scenes on one image share a motion 
 (its own sound is not used: put it, or a synced replacement, in the voice track with
 place_audio.py / sync_to_footage.py). Dissolves are blended before subtitles are drawn, so
 presenter footage and slides share one subtitle style; music fades in and out and ducks under
-the voice; the output is H.264/yuv420p + AAC with faststart.
+the voice; the output is H.264/yuv420p + AAC with faststart. The film lasts the timeline's
+duration: silence at the end of a longer voice track is dropped, audible voice is reported.
 
   python render_video.py work/timeline.json outputs/film.mp4 --voice work/voice.wav \
       --music work/music.wav --subtitles work/subtitles.srt
@@ -73,6 +74,18 @@ def media_duration(path, ffmpeg):
         return float(out.stdout.strip())
     except (OSError, ValueError, subprocess.CalledProcessError):
         return None
+
+
+def last_sound(path, after, ffmpeg, floor_db=-50):
+    """Time of the last sample above floor_db after `after` seconds, or None if all quiet there."""
+    import numpy as np
+    try:
+        raw = subprocess.run([ffmpeg, "-v", "error", "-ss", str(after), "-i", str(path), "-ac", "1", "-ar", "8000",
+                              "-f", "f32le", "-"], capture_output=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    loud = np.nonzero(np.abs(np.frombuffer(raw, dtype=np.float32)) > 10 ** (floor_db / 20))[0]
+    return after + (loud[-1] + 1) / 8000 if len(loud) else None
 
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
@@ -220,6 +233,8 @@ def main():
         left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
         return left, top, right - left, bottom - top
 
+    still = {}   # scaled frame of each image span without zoom, computed once
+
     def scene_frame(i, t):
         scene = scenes[i]
         if is_clip[i]:
@@ -227,10 +242,12 @@ def main():
             return draw_title(frame, scene)
         src = images[base / scene["asset"]]
         span_start, span_end, motion_scene = spans[i]
-        p = max(0., min(1., (t - span_start) / (span_end - span_start)))
-        ease = p * p * (3 - 2 * p)   # smoothstep ease-in-out
         motion = scenes[motion_scene]
         zoom = float(motion.get("zoom", 0))
+        if not zoom and motion_scene in still:
+            return draw_title(still[motion_scene].copy(), scene)
+        p = max(0., min(1., (t - span_start) / (span_end - span_start)))
+        ease = p * p * (3 - 2 * p)   # smoothstep ease-in-out
         factor = max(width / src.width, height / src.height) * (1 + zoom * ease)
         visible_w, visible_h = width / factor, height / factor
         cx = src.width * float(motion.get("center_x", .5))
@@ -241,6 +258,10 @@ def main():
             (width, height), Image.Transform.AFFINE,
             (1 / factor, 0, cx - width / (2 * factor), 0, 1 / factor, cy - height / (2 * factor)),
             resample=Image.Resampling.BICUBIC, fillcolor="white")
+        if not zoom:
+            while len(still) >= 2:          # a dissolve needs two; older spans are done
+                still.pop(next(iter(still)))
+            still[motion_scene] = frame.copy()
         return draw_title(frame, scene)
 
     def draw_title(frame, scene):
@@ -303,9 +324,10 @@ def main():
     # Audio is mixed over the whole film and then trimmed, so a preview hears the real fades and ducking.
     window = f"atrim=start={start}:end={end},asetpts=PTS-STARTPTS"
     voice_len = media_duration(args.voice, args.ffmpeg)
-    if voice_len is not None and voice_len > duration + .05:
-        print(f"WARNING: the voice ({voice_len:.2f}s) is longer than the timeline ({duration:.2f}s); "
-              f"its last {voice_len - duration:.2f}s are cut. Lengthen the timeline or trim the voice.", file=sys.stderr)
+    sound_end = last_sound(args.voice, duration, args.ffmpeg) if voice_len and voice_len > duration + .05 else None
+    if sound_end is not None:   # trailing silence past the end is cut without a word
+        print(f"WARNING: the voice is heard until {sound_end:.2f}s but the timeline ends at {duration:.2f}s; "
+              f"{sound_end - duration:.2f}s of it are cut. Lengthen the timeline (tail) or trim the voice.", file=sys.stderr)
     voice = f"[1:a]aresample=48000,aformat=channel_layouts=stereo,apad,atrim=duration={duration}"
     cmd = [args.ffmpeg, "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
            "-s", f"{width}x{height}", "-r", str(fps), "-i", "-", "-i", str(args.voice)]
