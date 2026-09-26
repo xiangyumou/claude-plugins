@@ -6,11 +6,12 @@ timing comes from words.json. Every sentence starts a new cue; a long sentence i
 the fewest even cues of at most --max-chars, preferring breaks at commas and avoiding cues
 that end on a function word ("of", "the", "and", ...).
 
-Subtitles are written for reading, not for the voice. `{shown|spoken}` shows one form and
+Sentences end at . ! ? ; followed by a space, not inside {...}, after abbreviations such as
+Dr. or U.K., or before a lowercase word. Subtitles are written for reading, not for the voice. `{shown|spoken}` shows one form and
 times it by the other, e.g. `It affects {10–15%|ten to fifteen percent} of pregnancies`. With
 --lines every line of the text file is one cue, for a hand-edited subtitle file. Each cue ends
 up to --linger s after its last word (never into the next cue); cues read faster than --max-cps
-characters per second are reported (default 20 for Latin text, 9 for CJK). --offset shifts every
+characters per second are reported (default 20 for Latin text, 9 for mostly-CJK text). --offset shifts every
 word time, for a words.json timed on audio that starts later in the film (the timeline's
 word_offset); the default flow times the whole voice track, so it stays 0.
 
@@ -27,7 +28,6 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 from align_words import CJK, tokens  # noqa: E402
 
-SENTENCE = re.compile(r"(?<=[.!?。！？；;])\s*")
 CLAUSE_END = re.compile(r"[,，、:：;；.!?。！？]\s*$")
 # A CJK character with any closing punctuation, or a run of other text with its trailing spaces.
 UNIT = re.compile(f"\\{{[^{{}}]*\\}}[^\\s{{}}{CJK}]*\\s*|[{CJK}][，。、！？；：”’）》]*|[^\\s{{}}{CJK}]+\\s*")
@@ -35,6 +35,40 @@ MARKUP = re.compile(r"\{([^{}|]*)\|([^{}]*)\}")
 # English words a cue should not end on (the phrase continues in the next cue).
 WEAK_END = set("a an the of to for from with in on at by and or but as is are was were be that "
                "which who my our your its their this these those than into about across".split())
+# A full stop after these does not end a sentence ("Dr. Lee", "et al. found").
+ABBREV = set("dr mr mrs ms prof st no fig figs vs etc al eg ie approx dept univ inc ltd".split())
+
+
+def abbreviation(word):
+    """Dr., et al., e.g., U.K. and the like: their full stop ends neither a sentence nor a clause."""
+    word = word.strip().rstrip("}")
+    return word.casefold().replace(".", "") in ABBREV or bool(re.fullmatch(r"(?:[A-Za-z]\.)+[A-Za-z]\.?", word))
+
+
+def sentences(paragraph):
+    """Split at . ! ? ; followed by a space (at once after 。！？；), never inside {shown|spoken},
+    after an abbreviation (Dr., U.K., e.g.) or before a lowercase word."""
+    out, start, depth = [], 0, 0
+    for i, c in enumerate(paragraph):
+        depth += (c == "{") - (c == "}")
+        if depth or c not in ".!?;。！？；":
+            continue
+        rest = paragraph[i + 1:]
+        if c in ".!?;" and rest[:1] and not rest[:1].isspace():      # 3.5, U.K, e.g
+            continue
+        if c == ".":
+            if abbreviation(re.split(r"[\s}]", paragraph[start:i])[-1]) or rest.lstrip()[:1].islower():
+                continue
+        out.append(paragraph[start:i + 1].strip())
+        start = i + 1
+    out.append(paragraph[start:].strip())
+    return [s for s in out if s]
+
+
+def is_cjk(text):
+    """Mostly Chinese/Japanese/Korean? One CJK name in an English script does not count."""
+    n_cjk = len(re.findall(f"[{CJK}]", text))
+    return n_cjk > .3 * (n_cjk + len(re.findall(r"[A-Za-z]", text)))
 
 
 def shown(text):
@@ -61,8 +95,8 @@ def pack(sentence, max_chars):
                 continue
             slack = max(0, max_chars - len(piece))
             last = shown(units[i - 1]).strip()
-            penalty = (0 if i == n or CLAUSE_END.search(last) else
-                       2 * max_chars if last.casefold() in WEAK_END else max_chars)
+            penalty = (0 if i == n or CLAUSE_END.search(last) and not abbreviation(last) else
+                       2 * max_chars if last.casefold() in WEAK_END or abbreviation(last) else max_chars)
             score = (best[j][0] + 1, best[j][1] + slack * slack + penalty * penalty / 4)
             if best[i] is None or score < best[i]:
                 best[i], back[i] = score, j
@@ -96,16 +130,15 @@ def main():
     words = data["words"] if isinstance(data, dict) else data
     if not words:
         parser.error("words.json has no words")
-    cjk = bool(re.search(f"[{CJK}]", script))
+    cjk = is_cjk(shown(script))
     max_chars = args.max_chars or (20 if cjk else 42)
     max_cps = args.max_cps or (9 if cjk else 20)
     words = [dict(w, start=w["start"] + args.offset, end=w["end"] + args.offset) for w in words]
 
     texts = []
     for paragraph in (script.split("\n") if not args.lines else []):
-        for sentence in SENTENCE.split(" ".join(paragraph.split())):
-            if sentence.strip():
-                texts += pack(sentence.strip(), max_chars)
+        for sentence in sentences(" ".join(paragraph.split())):
+            texts += pack(sentence, max_chars)
     if args.lines:
         texts = [" ".join(line.split()) for line in script.splitlines() if line.strip()]
     cue_tokens = [tokens(spoken(t)) for t in texts]

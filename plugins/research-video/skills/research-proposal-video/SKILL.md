@@ -32,11 +32,11 @@ description: >-
 
 ## 脚本
 
-脚本都在本 skill 的 `scripts/` 里，就地运行，不要复制（它们会互相导入）。参考文件里的 `scripts/...` 都指这个目录。依赖：Python 3、NumPy、Pillow、FFmpeg；卡片截图另需 Playwright（`pip install playwright && playwright install chromium`），PDF 转图用 poppler 的 `pdftoppm`；取词时间戳另需 `pip install faster-whisper`（识别），有定稿时推荐另装 `pip install qwen-asr`（强制对齐）。开工先确认哪个 Python 里装齐了这些包，记进状态记录。
+脚本都在本 skill 的 `scripts/` 里，就地运行，不要复制（它们会互相导入）。工作目录是用户的项目，所以用绝对路径调用：先设 `S=<本 skill 目录>/scripts`，再 `python3 $S/render_video.py ...`；参考文件里的 `$S/...` 都指这个目录。依赖：Python 3、NumPy、Pillow、FFmpeg；卡片截图另需 Playwright（`pip install playwright && playwright install chromium`），PDF 转图用 poppler 的 `pdftoppm`；取词时间戳另需 `pip install qwen-asr`（有定稿时强制对齐，推荐）或 `pip install faster-whisper`（识别）。开工先确认哪个 Python 里装齐了这些包，记进状态记录。
 
 | 脚本 | 作用 |
 |---|---|
-| `align_words.py` | 对**纯人声**取带 id 的词级时间戳：`--aligner qwen` 用 Qwen3-ForcedAligner 把定稿直接对到音频上（文字与稿子一致、结果可复现，推荐），默认 faster-whisper 识别；把落在静音里的词起点推到真正出声处；`--script` 逐处列出与认可稿不一致的地方 |
+| `align_words.py` | 对**纯人声**取带 id 的词级时间戳：有定稿、给了语言且装了 qwen-asr 时自动用 Qwen3-ForcedAligner 把定稿对到音频上（文字与稿子一致、结果可复现），否则用 faster-whisper 识别；把落在静音里的词起点推到真正出声处；`--script` 逐处列出与认可稿不一致的地方 |
 | `make_subtitles.py` | 用认可稿的文字、`words.json` 的时间生成 SRT；自动按句、按逗号切条，或 `--lines` 按手工分好的字幕文件逐行成条；`{显示\|口播}` 让字幕写数字、按口播的词取时间；报告读速过快的条目（默认英文 20、中文 9 字/秒）；`--offset` 平移词时间；支持中英文 |
 | `place_audio.py` | 把多段音频按采样点精确放到一条时间轴上（裁切、变速、增益、整体响度，限幅器已补偿延迟），代替 adelay+amix |
 | `sync_to_footage.py` | 真人画面的原声不能用、另有同内容的干净录音时，按短句自动对口型（DTW + 分段变速），`--asr-check` 独立验证 |
@@ -46,31 +46,33 @@ description: >-
 | `shoot_cards.py` | 把 HTML/CSS 卡片截成 PNG（默认 1920×1080 布局、1.25 倍像素），同时检查版面：文字超出卡片或画面、文字互相重叠、线条穿过文字，有问题返回非零 |
 | `check_output.py` | 交付前检查成片：音视频时长是否一致、时长/大小限制、编码、响度与真峰值；`--ref` 用互相关核对人声在片中的位置（抓整体偏移） |
 
-默认流程（细节见 [editing-and-delivery.md](references/editing-and-delivery.md)）：
+默认流程（`$S` 如上；细节见 [editing-and-delivery.md](references/editing-and-delivery.md)）：
 
-    shoot_cards.py work/cards/cards.html work/cards/out                               # 截图并检查版面
-    place_audio.py work/voice_full.wav --duration D intro_voice.wav@0 voice.wav@7.8   # 一条人声轨
-    align_words.py work/voice_full.wav work/words.json --aligner qwen --language en --script work/script.txt
-    make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines   # 字幕稿一行一条
-    build_timeline.py work/plan.json work/timeline.json                               # 已含检查
-    render_video.py work/timeline.json work/preview.mp4 ... --start 0 --end 15         # 先看接点
-    render_video.py work/timeline.json outputs/film.mp4 --voice work/voice_full.wav \
+    python3 $S/shoot_cards.py work/cards/cards.html work/cards/out          # 截图并检查版面
+    python3 $S/place_audio.py work/voice_full.wav --duration 111 --lufs -16 \
+        work/intro_voice.wav@0 work/voice.wav@7.8                           # 一条人声轨，整体响度
+    python3 $S/align_words.py work/voice_full.wav work/words.json --language en --script work/script.txt
+    python3 $S/make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
+    python3 $S/build_timeline.py work/plan.json work/timeline.json          # 已含检查
+    python3 $S/render_video.py work/timeline.json work/preview.mp4 --voice work/voice_full.wav \
+        --music work/music.wav --subtitles work/subtitles.srt --start 0 --end 15   # 先看接点
+    python3 $S/render_video.py work/timeline.json outputs/film.mp4 --voice work/voice_full.wav \
         --music work/music.wav --subtitles work/subtitles.srt
-    check_output.py outputs/film.mp4 --max-duration 120 --max-mb 50 --ref work/voice_full.wav
+    python3 $S/check_output.py outputs/film.mp4 --max-duration 120 --max-mb 50 --ref work/voice_full.wav
 
 人声、画面、字幕共用**一条**从 0 开始的时间轴：先拼好整条人声，再在它上面取词时间、做字幕和时间线，最后一次渲染。不要分段渲染再拼接，也不要事后给整片加一段开头——那会把后面所有东西一起推后或提前。
 
-720p 渲染耗时大约与片长相当，长片放后台运行，完成后再检查结果。有更完整的现成剪辑工程时优先复用它。
+默认 1080p/30 的渲染耗时约为片长的 1.5 倍（视机器而定），长片放后台运行，完成后再检查结果。有更完整的现成剪辑工程时优先复用它。
 
 ## 容易踩的坑
 
 - **FFmpeg `adelay`+`amix` 拼人声**：会悄悄丢掉共同的前导静音，整条人声提前（实际遇到过整片提前 1.15 秒）。用 `place_audio.py`，成片用 `check_output.py --ref` 核对。
-- **按段各自做响度归一**：短句会被放大到削波。同一次录音的各段只做整体归一（`--lufs`）；只有来源不同的整段才单独归一。
+- **按段各自做响度归一**：短句会被放大到削波。同一次录音的各段只做整体归一（`--lufs -16`）；只有来源不同的整段才单独归一。不做整体归一，成片响度就没人管。
 - **在混了音乐的音轨上跑 ASR**：词时间会漂。只对纯人声识别。
 - **词时间用 Whisper 识别**：名字、数字、拼写会被写成别的样子，停顿后的词起点会提前，重跑结果也会变。有定稿就用 `--aligner qwen`（细节见 editing-and-delivery.md 的“口播”一节）。
 - **真人片段的口型**：只看首尾对齐不够，逐句检查；原声有音乐底时，只能用对整段做的 DTW，不能靠能量找起止点。
 - **机器检查的循环论证**：用同一方法对齐又用同一方法验证，永远显示 0 误差。用独立方法（ASR 词起点、互相关）复核。
-- **文字卡和图表卡加推近**：逐步显示的卡片每张是不同的图，换图时运动进度归零，溶解时元素会跳一下，看起来像抖动。`zoom` 默认 0，只给照片设推近。
+- **文字卡和图表卡加推近**：逐步显示的卡片溶解时会跳，看起来像抖动。`zoom` 保持默认 0，只给照片设推近（见 editing-and-delivery.md 的“平滑运动”）。
 - **“示意”数据图**：没有真实数据的曲线、柱状图，贴上 illustrative 或“示意”小字也不行，观众只记得图形。画面上的数字和图都要能追到具体的表或图；没有就改用研究设计图或流程图（见 visuals.md 的“数据图”）。
 - **版面问题在缩略图上看不出**：标签压线、刻度出界、文字被裁掉，用户在成片里一眼就看到。卡片用 `shoot_cards.py` 截图，它不报错再进时间线。
 - **字幕照搬配音稿**：配音稿里的 ten to fifteen percent、被切断的 Department of | Artificial Intelligence，在字幕上都很难读。字幕单独写一版：数字用阿拉伯数字，每条是完整意群（见 [subtitles.md](references/subtitles.md)）。

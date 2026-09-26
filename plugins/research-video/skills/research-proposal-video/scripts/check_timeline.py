@@ -7,9 +7,14 @@ Word cues are compared with word start times plus the timeline's optional `word_
 import argparse
 import json
 import math
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+sys.dont_write_bytecode = True
+from align_words import CJK  # noqa: E402
 
 EPS = .002
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
@@ -57,12 +62,20 @@ def norm(text):
     return "".join(c for c in text.casefold() if c.isalnum())
 
 
+def can_span(text):
+    """A CJK word or a phrase ("explainable AI", "AI-driven") may cover several word entries;
+    a single Latin word may not, so "into" never matches "in to"."""
+    return bool(re.search(f"[{CJK}]", text) or re.search(r"\w\W+\w", text.strip()))
+
+
 def spoken_at(words, i, text):
-    """True when `text` is spoken starting at words[i], alone or across the next entries
-    (Chinese and Japanese are often timed per character: 超声 = 超 + 声)."""
+    """True when `text` is spoken starting at words[i]: as that entry, or, when can_span(text),
+    across the next entries too (Chinese and Japanese are often timed per character: 超声 = 超 + 声)."""
     target, said = norm(text), ""
     if not target or not norm(words[i]["text"]):     # a match starts on a spoken word, not on punctuation
         return False
+    if not can_span(text):
+        return norm(words[i]["text"]) == target
     for w in words[i:]:
         said += norm(w["text"])
         if said == target:

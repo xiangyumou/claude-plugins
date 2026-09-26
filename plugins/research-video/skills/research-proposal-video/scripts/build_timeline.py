@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 
 sys.dont_write_bytecode = True
-from check_timeline import load_words, norm, spoken_at, validate  # noqa: E402
+from check_timeline import can_span, load_words, norm, spoken_at, validate  # noqa: E402
 
 PLAN_KEYS = {"word", "after", "occurrence", "at", "transition", "anchor_tolerance"}
 
@@ -51,11 +51,16 @@ def find_word(words, text, after, offset, occurrence=1):
                 return w
     if found:
         raise SystemExit(f"'{text}' is spoken {found} time(s) at or after {after}s, not {occurrence}.")
-    later = [w for w in words if w["start"] + offset >= after - 1e-6]
-    spoken = [norm(w["text"]) for w in later]
-    close = difflib.get_close_matches(norm(text), spoken, n=3, cutoff=0.5)
-    hints = [f"'{w['text']}' at {w['start'] + offset:.2f}s" for w in later if norm(w["text"]) in close][:3]
-    nearby = " ".join(w["text"] for w in later[:8])
+    later = [i for i, w in enumerate(words) if w["start"] + offset >= after - 1e-6 and norm(w["text"])]
+    target, heard = norm(text), {}
+    for i in later:        # what is said from words[i] on: one entry, or as many as the target spans
+        said, k = norm(words[i]["text"]), i + 1
+        while can_span(text) and len(said) < len(target) and k < len(words):
+            said, k = said + norm(words[k]["text"]), k + 1
+        heard[i] = said
+    close = difflib.get_close_matches(target, list(dict.fromkeys(heard.values())), n=3, cutoff=0.5)
+    hints = [f"'{heard[i]}' at {words[i]['start'] + offset:.2f}s" for i in later if heard[i] in close][:3]
+    nearby = " ".join(words[i]["text"] for i in later[:8])
     raise SystemExit(f"'{text}' is not spoken at or after {after}s. "
                      + (f"Close: {', '.join(hints)}. " if hints else "")
                      + f"Next words: {nearby}")
@@ -78,6 +83,9 @@ def main():
     default_t = float(plan.get("transition", 0.36))
     tolerance = float(plan.get("anchor_tolerance", 0.25))
     specs = plan["scenes"]
+    if "word" in specs[0] or "at" in specs[0]:
+        print(f"WARNING: scene {specs[0]['id']} is the first scene and starts at 0; "
+              "its 'word'/'at' is ignored.", file=sys.stderr)
 
     cuts = [None]                        # (centre, transition, word) for each scene after the first
     for spec in specs[1:]:

@@ -14,8 +14,11 @@ pauses (Whisper starts early, inside the silence; the aligner sometimes starts l
 word). Each start is snapped to where the voice actually begins, never past the neighbouring word
 (--no-refine keeps the raw times).
 
-  python align_words.py work/voice.wav work/words.json --aligner qwen --language en --script work/script.txt
-  python align_words.py work/voice.wav work/words.json --language en --script work/script.txt   # Whisper
+The default (--aligner auto) uses qwen when --script and --language are given and qwen-asr is
+installed, and Whisper otherwise; the choice is printed and stored in words.json.
+
+  python align_words.py work/voice.wav work/words.json --language en --script work/script.txt
+  python align_words.py work/voice.wav work/words.json --aligner whisper --language en   # no script
 """
 import argparse
 import difflib
@@ -100,13 +103,13 @@ QWEN_LANG = {"en": "English", "zh": "Chinese", "yue": "Cantonese", "fr": "French
 _QWEN_MODELS = {}
 
 
-def qwen_align(audio, script_text, language, device):
+def qwen_align(audio, script_text, language, device, ffmpeg="ffmpeg"):
     """Force-align the script to the audio with Qwen3-ForcedAligner; returns [(text, start, end)]."""
     import subprocess as sp
     import numpy as np
     import torch
     from qwen_asr import Qwen3ForcedAligner
-    x = np.frombuffer(sp.run(["ffmpeg", "-v", "error", "-i", str(audio), "-ac", "1", "-ar", "16000",
+    x = np.frombuffer(sp.run([ffmpeg, "-v", "error", "-i", str(audio), "-ac", "1", "-ar", "16000",
                               "-f", "f32le", "-"], capture_output=True, check=True).stdout, dtype=np.float32)
     if len(x) > 300 * 16000:
         raise SystemExit("Qwen3-ForcedAligner handles up to 5 minutes; split the audio and use --offset")
@@ -123,8 +126,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("audio", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--aligner", choices=("whisper", "qwen"), default="whisper",
-                        help="qwen: force-align --script with Qwen3-ForcedAligner (recommended when a script exists)")
+    parser.add_argument("--aligner", choices=("auto", "whisper", "qwen"), default="auto",
+                        help="qwen: force-align --script with Qwen3-ForcedAligner (recommended when a script exists); "
+                             "auto: qwen when --script, --language and qwen-asr are all there, else whisper")
     parser.add_argument("--model", default="small", help="Whisper model size")
     parser.add_argument("--device", help="Default: cpu for Whisper; mps/cuda when available for qwen")
     parser.add_argument("--compute-type", default="int8")
@@ -132,9 +136,15 @@ def main():
     parser.add_argument("--offset", type=float, default=0, help="Position of this clip in the full film, seconds")
     parser.add_argument("--script", type=Path, help="Approved script; report where ASR differs from it")
     parser.add_argument("--no-refine", action="store_true", help="Keep the back end's word starts as they are")
+    parser.add_argument("--ffmpeg", default="ffmpeg")
     args = parser.parse_args()
     if args.offset < 0:
         parser.error("--offset must be nonnegative")
+    if args.aligner == "auto":
+        import importlib.util
+        args.aligner = ("qwen" if args.script and args.language and importlib.util.find_spec("qwen_asr")
+                        else "whisper")
+        print(f"Aligner: {args.aligner}")
     if args.aligner == "qwen":
         if not args.script:
             parser.error("--aligner qwen needs --script (the text to align)")
@@ -142,7 +152,7 @@ def main():
         if not language:
             parser.error("--aligner qwen needs --language, e.g. en or zh")
         try:
-            raw = qwen_align(args.audio, args.script.read_text(encoding="utf-8"), language, args.device)
+            raw = qwen_align(args.audio, args.script.read_text(encoding="utf-8"), language, args.device, args.ffmpeg)
         except ImportError:
             parser.error("Install qwen-asr in the chosen Python environment (pip install qwen-asr)")
     else:
@@ -165,7 +175,7 @@ def main():
             "end": max(round(args.offset + end, 3), round(start + .02, 3)),
         })
     if not args.no_refine:
-        moved = refine_starts(args.audio, words, args.offset)
+        moved = refine_starts(args.audio, words, args.offset, ffmpeg=args.ffmpeg)
         if moved:
             print(f"Moved {moved} word start(s) out of silence onto the voice onset")
     result = {"source": str(args.audio), "aligner": args.aligner, "language": language, "words": words}

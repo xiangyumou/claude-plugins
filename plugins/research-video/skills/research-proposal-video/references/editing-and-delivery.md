@@ -14,24 +14,39 @@
 | 图片/视频镜头、溶解、逐帧字幕、混音、MP4 | `render_video.py`（Pillow + FFmpeg） | 大量实拍、多轨复杂剪辑时用现有 NLE/FFmpeg 工程 |
 | 成片检查 | `check_output.py` | 必做，不可替代 |
 
-安装：`pip install Pillow faster-whisper`；卡片截图另装 `pip install playwright && playwright install chromium`，论文首页截图用 poppler 的 `pdftoppm`；强制对齐另装 `pip install qwen-asr`（单独的虚拟环境即可，首次运行下载约 1.7 GB 模型；Apple 芯片用 MPS，有 NVIDIA 显卡用 CUDA），FFmpeg 另装。WhisperX 环境更复杂，只在逐词精度确实不够时用。工具能力当场查：有些 Mac 上的 FFmpeg 没有 libass/subtitles 滤镜，`render_video.py` 逐帧自己画字幕，不依赖它；需要软字幕时另交 SRT。不要对不存在的滤镜反复试错。
+安装：
+
+- 基本：`pip install numpy Pillow`，另装 FFmpeg。
+- 卡片截图：`pip install playwright && playwright install chromium`；论文首页截图用 poppler 的 `pdftoppm`。
+- 词时间：`pip install qwen-asr`（强制对齐，可放单独的虚拟环境；首次运行下载约 1.7 GB 模型；Apple 芯片用 MPS，NVIDIA 用 CUDA）；没有定稿时用 `pip install faster-whisper`。WhisperX 只在逐词精度确实不够时用。
+- 工具能力当场查，不要对不存在的滤镜反复试错。例如有些 FFmpeg 没有 libass/subtitles 滤镜：`render_video.py` 逐帧自己画字幕，不依赖它；需要软字幕时另交 SRT。
 
 ## 口播、画面、字幕共用一条时间轴
 
-先定稿和干声，用 `place_audio.py` 拼出从 0 秒开始、与成片等长的整条人声轨（开场真人段 + 旁白），再在这条轨上生成 `words.json`。识别只对纯人声做，不对混了音乐的音轨做。整条音轨识别时偏移为 0；单独识别某段时，用 `align_words.py --offset` 传入该段在全片中的起点，这样词时间、字幕、时间线都在全片时间上，不需要再设 `word_offset`。ASR 只建议时间，不改认可稿的文字。人名、机构名、一词对多词和语音起止点要对照原声核实。改了语速、静音或重新合成后必须重新取时间戳；只做保持时长的音量/音高处理可以沿用原时间，但要检查边界。转换采样率不能改变时长，不要把 24 kHz 的文件当 48 kHz 解释。
+先定稿和干声，再按下面的顺序做（`$S` 是本 skill 的 `scripts/` 目录的绝对路径）：
 
-    python3 scripts/place_audio.py work/voice_full.wav --duration 111 \
+- 用 `place_audio.py` 拼出从 0 秒开始、与成片等长的整条人声轨（开场真人段 + 旁白），`--lufs -16` 做整体响度。渲染器不再归一响度，`check_output.py` 按 −16 LUFS 检查。
+- 在这条纯人声轨上生成 `words.json`，不对混了音乐的音轨做。单独识别某一段时，用 `align_words.py --offset` 传入该段在全片中的起点，词时间就在全片时间上，不需要 `word_offset`。
+- ASR 只建议时间，不改认可稿的文字。人名、机构名、一词对多词和语音起止点要对照原声核实。
+- 改了语速、静音或重新合成后必须重新取时间戳；只做保持时长的音量/音高处理可以沿用，但要检查边界。转换采样率不能改变时长，不要把 24 kHz 的文件当 48 kHz 解释。
+
+    python3 $S/place_audio.py work/voice_full.wav --duration 111 --lufs -16 \
         work/intro_voice.wav@0 work/voice.wav@7.8
-    python3 scripts/align_words.py work/voice_full.wav work/words.json --aligner qwen --language en --script work/script.txt
-    python3 scripts/make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
-    python3 scripts/build_timeline.py work/plan.json work/timeline.json
-    python3 scripts/render_video.py work/timeline.json outputs/film.mp4 \
+    python3 $S/align_words.py work/voice_full.wav work/words.json --language en --script work/script.txt
+    python3 $S/make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
+    python3 $S/build_timeline.py work/plan.json work/timeline.json
+    python3 $S/render_video.py work/timeline.json outputs/film.mp4 \
         --voice work/voice_full.wav --music work/music.wav --subtitles work/subtitles.srt
-    python3 scripts/check_output.py outputs/film.mp4 --max-duration 120 --max-mb 50 --ref work/voice_full.wav
+    python3 $S/check_output.py outputs/film.mp4 --max-duration 120 --max-mb 50 --ref work/voice_full.wav
 
-`align_words.py` 会把落在静音里的词起点推到真正出声的地方（Whisper 常把停顿后第一个词提前 0.4–1 秒），并修正零时长的词。中文、日文常按字给时间，计划里写的“超声”这类词会跨几个字去匹配。同一段音频重跑 ASR，个别词的时间也可能差 0.3 秒以上，所以时间线计划要留余量。Qwen 强制对齐同一音频两次结果完全相同；它偶尔把句首词起点放晚到词中（也会把一个词的时间给下一个词），`align_words.py` 会在前面至少 120 ms 的静音处找回起音。对齐结果的词和稿子逐字一致，计划里的 `word` 要按稿子的拼写写（harmonised 而非 harmonized）。
+关于词时间：
 
-`align_words.py --script` 会列出 ASR 与认可稿不一致的每一处（例如 script 'growth' -> heard 'gross'），逐条判断是识别错还是真的读错。字幕的写法和生成见 [subtitles.md](subtitles.md)。
+- `align_words.py` 默认在有 `--script`、`--language` 且装了 qwen-asr 时用 Qwen 强制对齐，否则用 Whisper，并打印所选的方式。
+- Qwen 对齐的词和稿子逐字一致（计划里的 `word` 按稿子拼写，harmonised 而非 harmonized），同一音频两次结果完全相同。它偶尔把句首词起点放晚到词中（或把一个词的时间给下一个词），脚本会在前面至少 120 ms 的静音处找回起音。
+- Whisper 常把停顿后第一个词提前 0.4–1 秒（脚本会推到真正出声处），偶尔给零时长的词（已修正），重跑时同一词可能差 0.3 秒以上，所以用 `after` 的计划要留余量。`--script` 会列出识别与认可稿不一致的每一处（例如 script 'growth' -> heard 'gross'），逐条判断是识别错还是真的读错。
+- 中文、日文常按字给时间，计划里的“超声”这类词会跨几个字去匹配；英文单词只和单个词匹配（into 不会命中 in to），带空格或连字符的短语可以跨词。
+
+字幕的写法和生成见 [subtitles.md](subtitles.md)。
 
 ### 时间线格式
 
@@ -51,7 +66,7 @@
       ]
     }
 
-若 w0042 从 2.00 秒开始，第二个镜头的转场中点正好是 2.00 秒。时间线顶层的 `word_offset` 会加到所有词时间上（`words.json` 是在后来才进入成片的音轨上取的时候用）；这时字幕也要用 `make_subtitles.py --offset` 加同样的偏移，否则整体提前。不写 `video` 时默认 1920×1080、30 fps。`video` 里可设 `fade_in`/`fade_out`（从黑/到黑的秒数）。
+若 w0042 从 2.00 秒开始，第二个镜头的转场中点正好是 2.00 秒。时间线顶层的 `word_offset` 会加到所有词时间上（`words.json` 是在后来才进入成片的音轨上取的时候用；字幕同样要加，见 subtitles.md）。不写 `video` 时默认 1920×1080、30 fps。`video` 里可设 `fade_in`/`fade_out`（从黑/到黑的秒数）。
 
 视频镜头：`asset` 是 .mp4/.mov 等时，按 `clip_in` 秒开始播放，铺满画面，不用它自带的声音（声音放进人声轨）。检查器会核对片段够不够长。
 
@@ -66,7 +81,11 @@
        {"id": "scan", "word": "ultrasound", "after": 20, "zoom": 0.03},
        {"id": "team", "word": "team", "occurrence": 2}]}
 
-每个镜头从 `after` 秒之后第一次出现的 `word` 开始（或用 `at` 指定秒数），转场中点对准该词起点，时长和 speech_anchor 自动生成并检查。找不到词会停下并列出相近的实际读音（例如 harmonised → harmonized）。`after` 比预期早约 1 秒写，给 ASR 抖动留余量；同一个词在附近出现多次时，靠 `after` 区分，或用 `occurrence` 写“第几次说到这个词”。`after` 是某一条人声轨上的秒数，换了配音就不再对；全部用 `word` + `occurrence` 的计划与声音无关，`build_timeline.py plan.json B/timeline.json --words B/words.json` 就能按另一条人声切出同样的镜头。素材路径相对于计划文件，写出的时间线里会换算成相对于时间线文件。`title` 画在左上角，只在图的左上有留白时使用；字幕写在 SRT 或 JSON 里，TTS 的专名发音拼写不能进字幕。
+- 每个镜头从 `after` 秒之后第 `occurrence` 次（默认第 1 次）说到 `word` 时开始，或用 `at` 指定秒数；转场中点对准该词起点，时长和 speech_anchor 自动生成并检查。第一个镜头总是从 0 开始，写了 `word`/`at` 会被忽略并警告。
+- 找不到词会停下，列出相近的实际读音（例如 harmonised → harmonized，超声 → 朝声）。
+- `after` 是某一条人声轨上的秒数，要比预期早约 1 秒写，换了配音就不再对。全部用 `word` + `occurrence` 的计划与声音无关：`build_timeline.py plan.json B/timeline.json --words B/words.json` 按另一条人声切出同样的镜头。
+- 素材路径相对于计划文件，写出的时间线里换算成相对于时间线文件。
+- `title` 画在左上角，只在图的左上有留白时使用。字幕写在 SRT 或 JSON 里，TTS 的专名发音拼写不能进字幕。
 
 ## 按语义切画面
 
@@ -80,7 +99,12 @@
 
 整数像素反复缩放/裁切会产生台阶状抖动。每帧都从原图用浮点仿射采样加 bicubic 重采样，不要在上一帧缩小后的图上再放大；帧率保持恒定。
 
-`zoom` 默认 0，画面静止。只给照片和场景图设缓慢推近，从全镜头 2–4% 开始，按观感调整。文字卡、图表卡保持 0：推近不增加信息，只让字和线条轻微游动。逐步显示的卡片（同一版式先灰后实、逐项点亮的几张图）必须是 0：每张是不同的图，换图时运动进度归零，前后两张的缩放不同，溶解时元素会跳一下，看起来像抖动。静止画面编码也省得多：以卡片为主的片子去掉推近后，文件可以小到原来的三分之一左右。
+`zoom` 默认 0，画面静止：
+
+- 只给照片和场景图设缓慢推近，从全镜头 2–4% 开始，按观感调整。
+- 文字卡、图表卡保持 0：推近不增加信息，只让字和线条轻微游动。
+- 逐步显示的卡片（同一版式先灰后实、逐项点亮的几张图）必须是 0：每张是不同的图，换图时运动进度归零，溶解时元素会跳一下，看起来像抖动。
+- 静止画面编码也省得多：以卡片为主的片子去掉推近后，文件可以小到原来的三分之一左右。
 
 进度 p 限制在 [0,1]，缓入缓出 e = p·p·(3−2p)，缩放 = 1 + zoom·e。人物不在中间时调 `center_x/center_y`，渲染器会保证画面不越界。同一张图跨连续几个镜头（例如换了标题）时，运动进度按整段计算，不因标题变化归零；换图才重置。不要加随机晃动来模拟镜头感。
 
@@ -98,11 +122,15 @@
 
 ## 预览、验证与交付
 
-先对改动的镜头和声音接点做短预览：`render_video.py` 加 `--start 40 --end 55` 只渲染这一段，混音和淡入淡出与完整片完全相同。实际看、听口型、运动、字幕和音乐闪避是否自然；静态抽帧、ASR 和峰值数值代替不了看和听。长片渲染放后台运行，完成后再检查。
+先对改动的镜头和声音接点做短预览：`render_video.py` 加 `--start 40 --end 55` 只渲染这一段，混音和淡入淡出与完整片完全相同。实际看、听口型、运动、字幕和音乐闪避是否自然；静态抽帧、ASR 和峰值数值代替不了看和听。
 
-完整片的最低检查是跑 `check_output.py`，加上提交限制和 `--ref`（人声轨在片中的起点用 `--ref-offset`）。它报告音视频时长是否一致、时长和大小、编码、整体响度和真峰值、第一次出声的时间，并在全片最多 6 处用互相关核对人声的位置（短片会缩短窗口，静音处跳过）：整体偏移超过 40 ms 或找不到人声都算错误。只有它通过才算“时序没问题”。此外还要看完结尾；看过新增画面和所有改过的转场；核对相关口播和字幕；听过音乐与人声的关系。环境无法实际播放时，明确说明验证到了哪一步。
+完整片的最低检查是跑 `check_output.py`，加上提交限制和 `--ref`（人声轨在片中的起点用 `--ref-offset`）：
 
-编码按提交规范选择；兼容性最好的是 MP4/H.264、yuv420p、AAC、faststart（渲染器的默认输出）。720p/24fps 是轻量的选择，不是所有项目的默认值；按要求改时间线里的 `video`，文件太大时提高 `--crf`。
+- 它报告音视频时长是否一致、时长和大小、编码、整体响度和真峰值、第一次出声的时间。
+- 它在全片最多 6 处用互相关核对人声的位置（短片会缩短窗口，静音处跳过）；整体偏移超过 40 ms 或找不到人声都算错误。只有它通过才算“时序没问题”。
+- 机器检查之外还要：看完结尾，看过新增画面和所有改过的转场，核对相关口播和字幕，听过音乐与人声的关系。环境无法实际播放时，明确说明验证到了哪一步。
+
+编码按提交规范选择；兼容性最好的是 MP4/H.264、yuv420p、AAC、faststart（渲染器的默认输出）。默认 1920×1080/30；要更小更快时在时间线的 `video` 里改成 720p/24，文件太大时提高 `--crf`。
 
 `work/` 保留原图、干声、音乐、字幕、时间线、来源清单和历史版本，方便下次只改必要的部分；不擅自删除历史版本。新一版放进新目录（例如 `work/pipeline_v6/`、`cards/out_v6/`），只复制要改的输入，旧版本和已交付的成品保持原样，状态记录里写明每版改了什么，让用户对比后再决定用哪版。
 

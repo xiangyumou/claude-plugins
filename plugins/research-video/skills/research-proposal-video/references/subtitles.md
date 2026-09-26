@@ -16,7 +16,7 @@
 
 交付版手工分条：把认可稿复制成 `subtitles.txt`，一行一条；要换写法的地方写成 `{显示|口播}`，例如 `It affects {10–15%|ten to fifteen percent} of pregnancies`。
 
-    python3 scripts/make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
+    python3 $S/make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
 
 时间仍按口播的词取，显示的是左边的写法。核对：去掉花括号的显示部分、保留口播部分后应与认可稿逐词一致；对不上的条目和读速警告都要逐条处理。交付的 SRT 用这一版。
 
