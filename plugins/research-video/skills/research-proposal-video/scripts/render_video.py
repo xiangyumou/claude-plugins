@@ -267,12 +267,23 @@ def main():
                 current = trial
         return [line for line in lines + [current.strip()] if line]
 
+    def balanced(draw, text, max_width):
+        # as few lines as fit max_width, then the narrowest width that keeps that many lines,
+        # so a two-line cue is split near the middle instead of leaving one word on line two
+        lines = wrap(draw, text, max_width)
+        lo, hi = max_width / (len(lines) + 1), max_width
+        while len(lines) > 1 and hi - lo > 4:
+            mid = (lo + hi) / 2
+            lo, hi = (lo, mid) if len(wrap(draw, text, mid)) == len(lines) else (mid, hi)
+        return wrap(draw, text, hi) if len(lines) > 1 else lines
+
     def add_subtitle(frame, t):
         cue = next((x for x in subtitles if x[0] <= t < x[1]), None)
         if not cue:
             return frame
         draw = ImageDraw.Draw(frame)
-        lines = wrap(draw, " ".join(cue[2].split()), width * .84)
+        # a line break written in the cue is kept; longer lines wrap, balanced, within 70% of the frame
+        lines = [line for part in cue[2].splitlines() for line in balanced(draw, " ".join(part.split()), width * .7)]
         if not lines:
             return frame
         line_h, pad = round(sub_px * 1.45), round(sub_px * .45)

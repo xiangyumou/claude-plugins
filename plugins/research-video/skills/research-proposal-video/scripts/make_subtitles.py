@@ -3,9 +3,17 @@
 
 Subtitle text always comes from the approved script (names and terms stay correct); only the
 timing comes from words.json. Every sentence starts a new cue; a long sentence is split into
-the fewest even cues of at most --max-chars, preferring breaks at commas.
+the fewest even cues of at most --max-chars, preferring breaks at commas and avoiding cues
+that end on a function word ("of", "the", "and", ...).
+
+Subtitles are written for reading, not for the voice. `{shown|spoken}` shows one form and
+times it by the other, e.g. `It affects {10–15%|ten to fifteen percent} of pregnancies`. With
+--lines every line of the text file is one cue, for a hand-edited subtitle file. Each cue ends
+up to --linger s after its last word (never into the next cue); cues read faster than --max-cps
+characters per second are reported.
 
   python make_subtitles.py work/script.txt work/words.json work/subtitles.srt
+  python make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
 """
 import argparse
 import difflib
@@ -20,7 +28,19 @@ from align_words import CJK, tokens  # noqa: E402
 SENTENCE = re.compile(r"(?<=[.!?。！？；;])\s*")
 CLAUSE_END = re.compile(r"[,，、:：;；.!?。！？]\s*$")
 # A CJK character with any closing punctuation, or a run of other text with its trailing spaces.
-UNIT = re.compile(f"[{CJK}][，。、！？；：”’）》]*|[^\\s{CJK}]+\\s*")
+UNIT = re.compile(f"\\{{[^{{}}]*\\}}[^\\s{{}}{CJK}]*\\s*|[{CJK}][，。、！？；：”’）》]*|[^\\s{{}}{CJK}]+\\s*")
+MARKUP = re.compile(r"\{([^{}|]*)\|([^{}]*)\}")
+# English words a cue should not end on (the phrase continues in the next cue).
+WEAK_END = set("a an the of to for from with in on at by and or but as is are was were be that "
+               "which who my our your its their this these those than into about across".split())
+
+
+def shown(text):
+    return MARKUP.sub(r"\1", text)
+
+
+def spoken(text):
+    return MARKUP.sub(r"\2", text)
 
 
 def pack(sentence, max_chars):
@@ -32,13 +52,15 @@ def pack(sentence, max_chars):
     back = [0] * (n + 1)
     for i in range(1, n + 1):
         for j in range(i - 1, -1, -1):
-            piece = "".join(units[j:i]).strip()
+            piece = shown("".join(units[j:i]).strip())
             if len(piece) > max_chars and i - j > 1:
                 break
             if best[j] is None:
                 continue
             slack = max(0, max_chars - len(piece))
-            penalty = 0 if i == n or CLAUSE_END.search(units[i - 1]) else max_chars
+            last = shown(units[i - 1]).strip()
+            penalty = (0 if i == n or CLAUSE_END.search(last) else
+                       2 * max_chars if last.casefold() in WEAK_END else max_chars)
             score = (best[j][0] + 1, best[j][1] + slack * slack + penalty * penalty / 4)
             if best[i] is None or score < best[i]:
                 best[i], back[i] = score, j
@@ -62,6 +84,9 @@ def main():
     parser.add_argument("--max-chars", type=int, help="Per cue; default 42 (Latin) or 20 (CJK)")
     parser.add_argument("--min-duration", type=float, default=1.0)
     parser.add_argument("--gap", type=float, default=.08, help="Seconds between consecutive cues")
+    parser.add_argument("--linger", type=float, default=.4, help="Max seconds a cue stays after its last word")
+    parser.add_argument("--max-cps", type=float, default=20, help="Warn above this reading speed (chars/s)")
+    parser.add_argument("--lines", action="store_true", help="Each non-empty line of the text is one cue")
     args = parser.parse_args()
     script = args.script.read_text(encoding="utf-8")
     data = json.loads(args.words.read_text(encoding="utf-8"))
@@ -71,13 +96,15 @@ def main():
     max_chars = args.max_chars or (20 if re.search(f"[{CJK}]", script) else 42)
 
     texts = []
-    for paragraph in script.split("\n"):
+    for paragraph in (script.split("\n") if not args.lines else []):
         for sentence in SENTENCE.split(" ".join(paragraph.split())):
             if sentence.strip():
-                # Subtitles drop a trailing comma (and, in CJK text, a trailing full stop).
-                texts += [re.sub(r"[,，、；：。]+$" if re.search(f"[{CJK}]", t) else r",+$", "", t)
-                          for t in pack(sentence.strip(), max_chars)]
-    cue_tokens = [tokens(t) for t in texts]
+                texts += pack(sentence.strip(), max_chars)
+    if args.lines:
+        texts = [" ".join(line.split()) for line in script.splitlines() if line.strip()]
+    cue_tokens = [tokens(spoken(t)) for t in texts]
+    # Subtitles drop a trailing comma (and, in CJK text, a trailing full stop).
+    texts = [re.sub(r"[,，、；：。]+$" if re.search(f"[{CJK}]", t) else r",+$", "", shown(t)) for t in texts]
 
     # Align script tokens to recognised tokens; each recognised token remembers its word.
     script_toks = [(c, tok) for c, toks in enumerate(cue_tokens) for tok in toks]
@@ -111,7 +138,7 @@ def main():
     cues = []
     for k, (start, end) in enumerate(times):
         next_start = times[k + 1][0] if k + 1 < len(times) else float("inf")
-        end = min(max(end, start + args.min_duration), next_start - args.gap)
+        end = min(max(end + args.linger, start + args.min_duration), next_start - args.gap)
         if cues:
             start = max(start, cues[-1]["end"] + args.gap)
         cues.append({"start": round(start, 3), "end": round(max(end, start + .2), 3), "text": texts[k]})
@@ -120,6 +147,12 @@ def main():
     for k, got, total in weak:
         print(f"WARNING: cue {k + 1} matched {got}/{total} tokens ({srt_time(cues[k]['start'])}): "
               f"{texts[k]!r}; check its timing.", file=sys.stderr)
+
+    for c in cues:
+        cps = len(c["text"]) / max(.01, c["end"] - c["start"])
+        if cps > args.max_cps:
+            print(f"WARNING: {srt_time(c['start'])} reads at {cps:.0f} chars/s: {c['text']!r}; "
+                  "merge with a neighbour, shorten the text or give it more time.", file=sys.stderr)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.output.suffix.lower() == ".json":

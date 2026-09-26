@@ -37,7 +37,7 @@ description: >-
 | 脚本 | 作用 |
 |---|---|
 | `align_words.py` | 对**纯人声**取带 id 的词级时间戳：`--aligner qwen` 用 Qwen3-ForcedAligner 把定稿直接对到音频上（文字与稿子一致、结果可复现，推荐），默认 faster-whisper 识别；把落在静音里的词起点推到真正出声处；`--script` 逐处列出与认可稿不一致的地方 |
-| `make_subtitles.py` | 用认可稿的文字、`words.json` 的时间生成 SRT；按句、再按逗号切成均匀短条，支持中英文 |
+| `make_subtitles.py` | 用认可稿的文字、`words.json` 的时间生成 SRT；自动按句、按逗号切条，或 `--lines` 按手工分好的字幕文件逐行成条；`{显示\|口播}` 让字幕写数字、按口播的词取时间；报告读速过快的条目，支持中英文 |
 | `place_audio.py` | 把多段音频按采样点精确放到一条时间轴上（裁切、变速、增益、整体响度），代替 adelay+amix |
 | `sync_to_footage.py` | 真人画面的原声不能用、另有同内容的干净录音时，按短句自动对口型（DTW + 分段变速），`--asr-check` 独立验证 |
 | `build_timeline.py` | 用“哪个镜头从哪个词开始”的简短计划生成 `timeline.json`，转场中点自动对准词，写出前先检查 |
@@ -51,7 +51,7 @@ description: >-
     shoot_cards.py work/cards/cards.html work/cards/out                               # 截图并检查版面
     place_audio.py work/voice_full.wav --duration D intro_voice.wav@0 voice.wav@7.8   # 一条人声轨
     align_words.py work/voice_full.wav work/words.json --aligner qwen --language en --script work/script.txt
-    make_subtitles.py work/script.txt work/words.json work/subtitles.srt
+    make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines   # 字幕稿一行一条
     build_timeline.py work/plan.json work/timeline.json                               # 已含检查
     render_video.py work/timeline.json work/preview.mp4 ... --start 0 --end 15         # 先看接点
     render_video.py work/timeline.json outputs/film.mp4 --voice work/voice_full.wav \
@@ -73,6 +73,7 @@ description: >-
 - **文字卡和图表卡加推近**：逐步显示的卡片每张是不同的图，换图时运动进度归零，溶解时元素会跳一下，看起来像抖动。`zoom` 默认 0，只给照片设推近。
 - **“示意”数据图**：没有真实数据的曲线、柱状图，贴上 illustrative 或“示意”小字也不行，观众只记得图形。画面上的数字和图都要能追到具体的表或图；没有就改用研究设计图或流程图（见 visuals.md 的“数据图”）。
 - **版面问题在缩略图上看不出**：标签压线、刻度出界、文字被裁掉，用户在成片里一眼就看到。卡片用 `shoot_cards.py` 截图，它不报错再进时间线。
+- **字幕照搬配音稿**：配音稿里的 ten to fifteen percent、被切断的 Department of | Artificial Intelligence，在字幕上都很难读。字幕单独写一版：数字用阿拉伯数字，每条是完整意群（见 editing-and-delivery.md 的字幕部分）。
 - **交付前必须跑 `check_output.py`**：音视频时长差、整体偏移、真峰值过高都是看缩略图发现不了的。
 
 ## 工作方式
