@@ -7,7 +7,7 @@
 | 工作 | 默认 | 换用条件 |
 |---|---|---|
 | 词级时间戳 | `align_words.py --aligner qwen`（Qwen3-ForcedAligner-0.6B，按定稿强制对齐） | 没有定稿、或音频超过 5 分钟时用默认的 faster-whisper；两者都要人工抽查 |
-| 字幕 | `make_subtitles.py`：认可稿文字 + ASR 时间 | 已有人工校对的字幕 |
+| 字幕 | `make_subtitles.py --lines`：手工分条的字幕稿（`{显示\|口播}`）+ 词时间 | 已有人工校对的字幕 |
 | 拼人声轨 | `place_audio.py`（采样点精确） | 不用 adelay+amix |
 | 真人画面换成干净录音 | `sync_to_footage.py`（DTW 分句对口型） | 自动结果仍不自然时，按 `.sync.json` 手调各段再用 `place_audio.py` |
 | 时间线 | `build_timeline.py` 由词生成，`check_timeline.py` 检查 | 现有剪辑工程有更完整的检查时沿用 |
@@ -23,7 +23,7 @@
     python3 scripts/place_audio.py work/voice_full.wav --duration 111 \
         work/intro_voice.wav@0 work/voice.wav@7.8
     python3 scripts/align_words.py work/voice_full.wav work/words.json --aligner qwen --language en --script work/script.txt
-    python3 scripts/make_subtitles.py work/script.txt work/words.json work/subtitles.srt
+    python3 scripts/make_subtitles.py work/subtitles.txt work/words.json work/subtitles.srt --lines
     python3 scripts/build_timeline.py work/plan.json work/timeline.json
     python3 scripts/render_video.py work/timeline.json outputs/film.mp4 \
         --voice work/voice_full.wav --music work/music.wav --subtitles work/subtitles.srt
@@ -31,7 +31,7 @@
 
 `align_words.py` 会把落在静音里的词起点推到真正出声的地方（Whisper 常把停顿后第一个词提前 0.4–1 秒），并修正零时长的词。同一段音频重跑 ASR，个别词的时间也可能差 0.3 秒以上，所以时间线计划要留余量。Qwen 强制对齐同一音频两次结果完全相同；它偶尔把句首词起点放晚到词中（也会把一个词的时间给下一个词），`align_words.py` 会在前面至少 120 ms 的静音处找回起音。对齐结果的词和稿子逐字一致，计划里的 `word` 要按稿子的拼写写（harmonised 而非 harmonized）。
 
-`align_words.py --script` 会列出 ASR 与认可稿不一致的每一处（例如 script 'growth' -> heard 'gross'），逐条判断是识别错还是真的读错。`make_subtitles.py` 的字幕文字全部来自认可稿：每句另起一条，长句拆成数量最少、长度均匀的几条（默认英文不超过 42 字符、中文不超过 20 字），优先在逗号处断开；中文字幕去掉句末标点。对不上的条目会报警告，要人工核对时间。
+`align_words.py --script` 会列出 ASR 与认可稿不一致的每一处（例如 script 'growth' -> heard 'gross'），逐条判断是识别错还是真的读错。`make_subtitles.py` 的字幕文字全部来自认可稿或由它改写的字幕稿，时间来自 `words.json`。直接喂认可稿时自动分条：每句另起一条，长句拆成数量最少、长度均匀的几条（默认英文不超过 42 字符、中文不超过 20 字），优先在逗号处断开，避免以虚词结尾；这适合出第一稿，交付用下面“字幕”一节的手工字幕稿和 `--lines`。中文字幕去掉句末标点。对不上的条目和读速过快的条目都会报警告，要逐条处理。
 
 ### 时间线格式
 
@@ -63,9 +63,10 @@
      "scenes": [
        {"id": "intro", "asset": "../src/presenter.mp4", "clip_in": 0.9, "zoom": 0},
        {"id": "need", "at": 8.0, "transition": 0.4},
-       {"id": "scan", "word": "ultrasound", "after": 20, "zoom": 0.03}]}
+       {"id": "scan", "word": "ultrasound", "after": 20, "zoom": 0.03},
+       {"id": "team", "word": "team", "occurrence": 2}]}
 
-每个镜头从 `after` 秒之后第一次出现的 `word` 开始（或用 `at` 指定秒数），转场中点对准该词起点，时长和 speech_anchor 自动生成并检查。找不到词会停下并列出相近的实际读音（例如 harmonised → harmonized）。`after` 比预期早约 1 秒写，给 ASR 抖动留余量；同一个词在附近出现多次时，靠 `after` 区分。路径相对于时间线文件。`title` 画在左上角，只在图的左上有留白时使用；字幕写在 SRT 或 JSON 里，TTS 的专名发音拼写不能进字幕。
+每个镜头从 `after` 秒之后第一次出现的 `word` 开始（或用 `at` 指定秒数），转场中点对准该词起点，时长和 speech_anchor 自动生成并检查。找不到词会停下并列出相近的实际读音（例如 harmonised → harmonized）。`after` 比预期早约 1 秒写，给 ASR 抖动留余量；同一个词在附近出现多次时，靠 `after` 区分，或用 `occurrence` 写“第几次说到这个词”。`after` 是某一条人声轨上的秒数，换了配音就不再对；全部用 `word` + `occurrence` 的计划与声音无关，`build_timeline.py plan.json B/timeline.json --words B/words.json` 就能按另一条人声切出同样的镜头。素材路径相对于计划文件，写出的时间线里会换算成相对于时间线文件。`title` 画在左上角，只在图的左上有留白时使用；字幕写在 SRT 或 JSON 里，TTS 的专名发音拼写不能进字幕。
 
 ## 按语义切画面
 
@@ -77,12 +78,14 @@
 
 字幕在转场合成之后绘制，所以跨镜头的字幕不会出现双影；字幕跨过切镜是允许的。底部留安全边距，一屏不塞太多字。
 
-字幕是给人读的，和配音稿分开优化。配音稿为了读得顺会把数字写成单词（ten to fifteen percent），字幕要写成读者一眼能看懂的形式：
-- 数字、百分比、年份、数量用阿拉伯数字（10–15%、47,000、3 countries），和画面卡片上的写法一致；缩写第一次出现时写成“全称 (缩写)”。
-- 每条是完整的意群：不在专名、固定搭配中间断开（Department of | Artificial Intelligence、proof of | concept），不以 of、the、and、for 这类词结尾，列举（Malaysia, Singapore and India）放在同一条。
-- 一条最多两行：`render_video.py` 一行最宽占画面 70%，放不下时自动分成长度接近的两行，所以不会剩一个词单独掉到第二行。读速不超过每秒约 20 个字符，句末多停留一点再换下一条。
+## 字幕
 
-做法：把认可稿复制成 `subtitles.txt`，一行一条手工分好；要换写法的地方写成 `{显示|口播}`，例如 `It affects {10–15%|ten to fifteen percent} of pregnancies`。用 `make_subtitles.py subtitles.txt words.json subtitles.srt --lines` 生成：时间仍按口播的词取，显示的是左边的写法。改完核对一遍：去掉花括号的显示部分、保留口播部分后应与认可稿逐词一致，读速警告要处理掉。交付的 SRT 用这一版。
+字幕是给人读的，和配音稿分开优化。配音稿为了读得顺会把数字写成单词（ten to fifteen percent），字幕要写成读者一眼能看懂的形式：
+- 按字幕语言的书写习惯，和画面卡片上的写法一致。英文：统计数字、百分比、年份、带单位的量用阿拉伯数字（10–15%、47,000、25 publications、2024）；句中的小计数按英文习惯写单词（three countries）；口语化的量保持原话（up to half 不改成 50%）。中文字幕数字一律用阿拉伯数字。缩写第一次出现时写成“全称 (缩写)”。
+- 每条是完整的意群：不在专名、固定搭配中间断开（Department of | Artificial Intelligence、proof of | concept），不以 of、the、and、for 这类词结尾，列举（三个国家名）放在同一条。
+- 一条最多两行：`render_video.py` 一行最宽占画面 70%，放不下时自动分成长度接近的两行，所以不会剩一个词单独掉到第二行。读速不超过每秒约 20 个字符（`--max-cps` 报警），超了就和相邻一条合并；每条在最后一个词后停留最多 0.4 秒（`--linger`），不压到下一条。
+
+做法：把认可稿复制成 `subtitles.txt`，一行一条手工分好；要换写法的地方写成 `{显示|口播}`，例如 `It affects {10–15%|ten to fifteen percent} of pregnancies`。用 `make_subtitles.py subtitles.txt words.json subtitles.srt --lines` 生成：时间仍按口播的词取，显示的是左边的写法。改完核对一遍：去掉花括号的显示部分、保留口播部分后应与认可稿逐词一致，读速警告要处理掉。交付的 SRT 用这一版。几版成片共用一份字幕稿时，任何一版报读速警告都要改这份稿子，再把各版都重新生成。
 
 ## 平滑运动与画质
 
@@ -129,5 +132,18 @@
 编码按提交规范选择；兼容性最好的是 MP4/H.264、yuv420p、AAC、faststart（渲染器的默认输出）。720p/24fps 是轻量的选择，不是所有项目的默认值；按要求改时间线里的 `video`，文件太大时提高 `--crf`。
 
 `work/` 保留原图、干声、音乐、字幕、时间线、来源清单和历史版本，方便下次只改必要的部分；不擅自删除历史版本。新一版放进新目录（例如 `work/pipeline_v6/`、`cards/out_v6/`），只复制要改的输入，旧版本和已交付的成品保持原样，状态记录里写明每版改了什么，让用户对比后再决定用哪版。
+
+### 只换配音的 A/B 版
+
+几个候选声音都过了试听、各有取舍时，做两部只差配音的完整成片让用户（或导师）选，比两段试听更接近最终观感。除了人声轨，其余全部相同：开场、卡片、运动、配乐、字幕文字。
+
+- 每个声音各拼一条整轨人声（开场段相同、旁白起点相同），各自取词时间。开场段两版用同一份词时间，免得对齐抖动让开场的切点不同。
+- 时间线计划用 `word` + `occurrence`，两版共用一份，分别用 `--words` 生成时间线。旧计划只有 `after` 时，先按当前声音的词时间把每个镜头换算成 `occurrence`。配乐里按时间写的推进点、音乐尾声也跟着对应的词走。
+- 字幕共用一份字幕稿，两版分别生成 SRT；任一版读速超标就改这份共用稿，两版都重新生成。
+- 放在 `work/pipeline_vN/A/`、`B/`，文件名写明差别（例如 `film_A_<声音名>.mp4`），两版都跑 `check_output.py`（`--ref` 各用自己的人声轨）。发给用户时说清“除了配音完全一样”，状态记录写明两版唯一的差别。
+
+### 选定之后
+
+用户选定一版后才更新交付目录：原来的成品挪进 `work/` 下的归档目录（例如 `work/outputs_archive_v2/`），不删除；把选中的成片和它自己的 SRT 按交付文件名复制进 `outputs/`；核对逐字稿、录音稿是否仍与这一版的口播一致；对 `outputs/` 里的文件再跑一遍 `check_output.py`；状态记录写明选了哪版、谁选的、来源路径和检查结果。没选中的版本留在 `work/`。
 
 用户在手机上或通过远程控制看进度时，聊天里发送的文件大约超过 30 MB 就收不到。成片超过这个大小时，另做一个预览发过去（例如 `ffmpeg -i film.mp4 -c:v libx264 -preset slow -crf 26 -c:a aac -b:a 160k -movflags +faststart preview.mp4`），说明它只是压缩预览，完整片在哪个路径。外发目录只放用户需要的完整成片，以及用户要的 PPTX、逐字稿或 SRT；短预览另附，不代替完整片。

@@ -8,6 +8,7 @@ center_x/y, title, clip_in, ...) are copied through. The result is checked with
 check_timeline.py before it is written.
 
   python build_timeline.py work/plan.json work/timeline.json
+  python build_timeline.py work/plan.json work/B/timeline.json --words work/B/words.json  # same cuts, other voice
 
 plan.json:
   {"words": "words.json", "word_offset": 0, "transition": 0.36, "tail": 2.8,
@@ -17,11 +18,16 @@ plan.json:
      {"id": "intro", "asset": "../src/presenter.mp4", "clip_in": 0.9},
      {"id": "problem", "at": 8.0, "transition": 0.4},  # cut centred at 8.0 s
      {"id": "stats", "word": "It", "after": 11},       # first "It" starting at/after 11 s
+     {"id": "method", "word": "test", "occurrence": 2}, # second "test" spoken (after 0 s)
      {"id": "clinic", "word": "clinic", "after": 30, "asset": "photos/clinic.jpg", "zoom": 0.03}]}  # photos only
 
 Word times are word-file times plus word_offset (use it when words.json was timed on an audio
 file that starts later in the film). A missing word stops the build and lists the nearest words
 actually spoken after `after`, which catches US/UK spellings and ASR mishearings.
+
+`after` is in seconds of one particular voice track. A plan that only uses `word` with
+`occurrence` (the n-th time the word is spoken at or after `after`, default 1) does not depend on
+the voice: with --words the same plan cuts a re-recorded or different voice on the same words.
 """
 import argparse
 import difflib
@@ -33,17 +39,22 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 from check_timeline import load_words, validate  # noqa: E402
 
-PLAN_KEYS = {"word", "after", "at", "transition", "anchor_tolerance"}
+PLAN_KEYS = {"word", "after", "occurrence", "at", "transition", "anchor_tolerance"}
 
 
 def norm(text):
     return "".join(c for c in text.casefold() if c.isalnum())
 
 
-def find_word(words, text, after, offset):
+def find_word(words, text, after, offset, occurrence=1):
+    found = 0
     for w in words:
         if w["start"] + offset >= after - 1e-6 and norm(w["text"]) == norm(text):
-            return w
+            found += 1
+            if found == occurrence:
+                return w
+    if found:
+        raise SystemExit(f"'{text}' is spoken {found} time(s) at or after {after}s, not {occurrence}.")
     later = [w for w in words if w["start"] + offset >= after - 1e-6]
     spoken = [norm(w["text"]) for w in later]
     close = difflib.get_close_matches(norm(text), spoken, n=3, cutoff=0.5)
@@ -58,13 +69,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("plan", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--words", type=Path, help="words.json to use instead of the plan's (e.g. another voice)")
     args = parser.parse_args()
     plan = json.loads(args.plan.read_text(encoding="utf-8"))
     plan_dir, out_dir = args.plan.resolve().parent, args.output.resolve().parent
     offset = float(plan.get("word_offset", 0))
     words, word_rel = None, None
-    if plan.get("words"):
-        word_path = plan_dir / plan["words"]
+    if args.words or plan.get("words"):
+        word_path = args.words.resolve() if args.words else plan_dir / plan["words"]
         words = load_words(word_path)
         word_rel = os.path.relpath(word_path, out_dir)
     default_t = float(plan.get("transition", 0.36))
@@ -79,7 +91,7 @@ def main():
         elif "word" in spec:
             if words is None:
                 raise SystemExit(f"scene {spec['id']}: 'word' needs a words file in the plan")
-            w = find_word(words, spec["word"], float(spec.get("after", 0)), offset)
+            w = find_word(words, spec["word"], float(spec.get("after", 0)), offset, int(spec.get("occurrence", 1)))
             cuts.append((w["start"] + offset, t, w))
         else:
             raise SystemExit(f"scene {spec['id']}: give 'word' (with optional 'after') or 'at' seconds")

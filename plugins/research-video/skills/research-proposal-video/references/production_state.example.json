@@ -40,6 +40,7 @@
   "timeline_plan": "work/plan.json",
   "timeline": "work/timeline.json",
   "word_timestamps": "work/words.json",
+  "subtitle_text": "work/subtitles.txt",
   "subtitles": "work/subtitles.srt",
   "audio": {
     "dry_voice": "work/voice.wav",
@@ -51,6 +52,15 @@
   },
   "assets_manifest": "work/assets.json",
   "latest_output": null,
+  "versions": {
+    "work/pipeline_v1": "what changed in this version"
+  },
+  "final_choice": {
+    "chosen": null,
+    "chosen_by": null,
+    "source": null,
+    "previous_output_archived_to": null
+  },
   "open_feedback": [],
   "validation": {
     "timeline": null,
